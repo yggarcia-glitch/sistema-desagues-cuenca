@@ -1,0 +1,30 @@
+// Prisma Schema - Sistema de Gestion de Desagues Obstruidos
+// US-01: Modelo de Usuario
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TipoUsuario {
+  ciudadano
+  tecnico
+  admin
+}
+
+model Usuario {
+  id             Int         @id @default(autoincrement())
+  nombre         String      @db.VarChar(80)
+  apellido       String      @db.VarChar(80)
+  correo         String      @unique @db.VarChar(120)
+  telefono       String?     @db.VarChar(15)
+  contrasenaHash String      @map("contrasena_hash") @db.VarChar(255)
+  tipoUsuario    TipoUsuario @default(ciudadano) @map("tipo_usuario")
+  fechaRegistro  DateTime    @default(now()) @map("fecha_registro")
+
+  @@map("usuarios")
+}
