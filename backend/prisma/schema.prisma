@@ -1,0 +1,147 @@
+// Prisma Schema - Sistema de Gestion de Desagues Obstruidos
+// Cuenca, Ecuador | Yosef Garcia | Instituto Tecnologico Sudamericano
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ─────────────────────────────────────────────────────────────
+
+enum TipoUsuario {
+  ciudadano
+  tecnico
+  admin
+}
+
+enum TipoDesague {
+  sumidero
+  alcantarilla
+  cuneta
+}
+
+enum Prioridad {
+  alta
+  media
+  baja
+}
+
+enum EstadoEvento {
+  pendiente
+  en_proceso
+  resuelto
+}
+
+enum ResultadoOrden {
+  resuelto
+  parcial
+  sin_solucion
+}
+
+// ── Modelos ───────────────────────────────────────────────────────────
+
+model Sector {
+  id          Int       @id @default(autoincrement())
+  nombre      String    @db.VarChar(100)
+  descripcion String?
+  desagues    Desague[]
+
+  @@map("sectores")
+}
+
+model Usuario {
+  id               Int            @id @default(autoincrement())
+  nombre           String         @db.VarChar(80)
+  apellido         String         @db.VarChar(80)
+  correo           String         @unique @db.VarChar(120)
+  telefono         String?        @db.VarChar(15)
+  contrasenaHash   String         @map("contrasena_hash") @db.VarChar(255)
+  tipoUsuario      TipoUsuario    @default(ciudadano) @map("tipo_usuario")
+  fechaRegistro    DateTime       @default(now()) @map("fecha_registro")
+
+  eventos          Evento[]
+  ordenesAsignadas OrdenTrabajo[]
+  historialCambios HistorialEstado[]
+
+  @@map("usuarios")
+}
+
+model Desague {
+  id          Int         @id @default(autoincrement())
+  codigo      String      @db.VarChar(20)
+  latitud     Decimal     @db.Decimal(10, 7)
+  longitud    Decimal     @db.Decimal(10, 7)
+  direccion   String      @db.VarChar(200)
+  tipoDesague TipoDesague @map("tipo_desague")
+  sectorId    Int         @map("sector_id")
+
+  sector  Sector   @relation(fields: [sectorId], references: [id])
+  eventos Evento[]
+
+  @@map("desagues")
+}
+
+// EVENTO = unificacion de reporte + foto evidencia + referencia al desague
+model Evento {
+  id          Int          @id @default(autoincrement())
+  usuarioId   Int          @map("usuario_id")
+  desagueId   Int          @map("desague_id")
+  descripcion String
+  latitud     Decimal      @db.Decimal(10, 7)
+  longitud    Decimal      @db.Decimal(10, 7)
+  prioridad   Prioridad    @default(media)
+  estado      EstadoEvento @default(pendiente)
+  fechaEvento DateTime     @default(now()) @map("fecha_evento")
+
+  usuario   Usuario          @relation(fields: [usuarioId], references: [id])
+  desague   Desague          @relation(fields: [desagueId], references: [id])
+  fotos     FotoEvidencia[]
+  orden     OrdenTrabajo?
+  historial HistorialEstado[]
+
+  @@map("eventos")
+}
+
+model FotoEvidencia {
+  id           Int      @id @default(autoincrement())
+  eventoId     Int      @map("evento_id")
+  urlImagen    String   @map("url_imagen") @db.VarChar(255)
+  fechaCaptura DateTime @default(now()) @map("fecha_captura")
+
+  evento Evento @relation(fields: [eventoId], references: [id])
+
+  @@map("fotos_evidencia")
+}
+
+model OrdenTrabajo {
+  id                Int             @id @default(autoincrement())
+  eventoId          Int             @unique @map("evento_id")
+  tecnicoId         Int             @map("tecnico_id")
+  fechaAsignacion   DateTime        @default(now()) @map("fecha_asignacion")
+  fechaIntervencion DateTime?       @map("fecha_intervencion")
+  observaciones     String?
+  resultado         ResultadoOrden?
+
+  evento  Evento  @relation(fields: [eventoId], references: [id])
+  tecnico Usuario @relation(fields: [tecnicoId], references: [id])
+
+  @@map("ordenes_trabajo")
+}
+
+model HistorialEstado {
+  id             Int      @id @default(autoincrement())
+  eventoId       Int      @map("evento_id")
+  estadoAnterior String   @map("estado_anterior") @db.VarChar(30)
+  estadoNuevo    String   @map("estado_nuevo") @db.VarChar(30)
+  fechaCambio    DateTime @default(now()) @map("fecha_cambio")
+  usuarioId      Int      @map("usuario_id")
+
+  evento  Evento  @relation(fields: [eventoId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@map("historial_estados")
+}
