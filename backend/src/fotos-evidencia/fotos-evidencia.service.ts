@@ -1,21 +1,35 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateFotoDto } from './dto/create-foto.dto';
 
 @Injectable()
 export class FotosEvidenciaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateFotoDto) {
+  async create(data: { eventoId: number; urlImagen: string }) {
     const evento = await this.prisma.evento.findUnique({
-      where: { id: dto.eventoId },
+      where: { id: data.eventoId },
     });
-    if (!evento) throw new NotFoundException(`Evento #${dto.eventoId} no encontrado`);
+    if (!evento) {
+      throw new NotFoundException(`Evento #${data.eventoId} no encontrado`);
+    }
+
+    const totalFotos = await this.prisma.fotoEvidencia.count({
+      where: { eventoId: data.eventoId },
+    });
+    if (totalFotos >= 3) {
+      throw new BadRequestException(
+        'El EVENTO ya tiene el maximo de 3 fotos permitidas',
+      );
+    }
 
     return this.prisma.fotoEvidencia.create({
       data: {
-        eventoId: dto.eventoId,
-        urlImagen: dto.urlImagen,
+        eventoId: data.eventoId,
+        urlImagen: data.urlImagen,
       },
     });
   }
