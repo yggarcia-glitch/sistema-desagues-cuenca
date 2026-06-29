@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Tag, Typography, Spin, Space } from 'antd';
+import { Card, Row, Col, Statistic, Tag, Typography, Spin, Space, Grid } from 'antd';
+
+const { useBreakpoint } = Grid;
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import { getEventosMapa } from '../../api/panel';
 import type { EventoMapa } from '../../types';
@@ -23,6 +25,8 @@ const ESTADO_LABEL: Record<string, string> = {
 export default function Dashboard() {
   const [eventos, setEventos] = useState<EventoMapa[]>([]);
   const [loading, setLoading] = useState(true);
+  const screens = useBreakpoint();
+  const mapHeight = screens.md ? 520 : 320;
 
   useEffect(() => {
     getEventosMapa()
@@ -80,11 +84,11 @@ export default function Dashboard() {
         }
       >
         {loading ? (
-          <div style={{ height: 520, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ height: mapHeight, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Spin size="large" />
           </div>
         ) : (
-          <div style={{ height: 520, borderRadius: 6, overflow: 'hidden' }}>
+          <div style={{ height: mapHeight, borderRadius: 6, overflow: 'hidden' }}>
             <MapContainer center={CUENCA_CENTER} zoom={14} style={{ height: '100%', width: '100%' }}>
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'

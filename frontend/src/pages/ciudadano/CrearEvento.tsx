@@ -6,7 +6,10 @@ import {
 import { UploadOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import { Grid } from 'antd';
 import type { UploadFile } from 'antd';
+
+const { useBreakpoint } = Grid;
 import { crearEvento, subirFoto, getDesagues } from '../../api/eventos';
 import type { Desague } from '../../types';
 
@@ -39,6 +42,8 @@ export default function CrearEvento() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const { message } = App.useApp();
+  const screens = useBreakpoint();
+  const mapHeight = screens.md ? 380 : 260;
 
   useEffect(() => {
     getDesagues()
@@ -212,7 +217,7 @@ export default function CrearEvento() {
               style={{ marginBottom: 12 }}
             />
           )}
-          <div style={{ height: 380, borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ height: mapHeight, borderRadius: 8, overflow: 'hidden' }}>
             <MapContainer
               center={CUENCA_CENTER}
               zoom={14}

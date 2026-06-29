@@ -10,6 +10,7 @@ import Dashboard from './pages/tecnico/Dashboard';
 import ListaEventos from './pages/tecnico/ListaEventos';
 import SectoresCriticos from './pages/tecnico/SectoresCriticos';
 import Estadisticas from './pages/admin/Estadisticas';
+import GestionUsuarios from './pages/admin/GestionUsuarios';
 
 function HomeRedirect() {
   const { usuario, isAuthenticated } = useAuth();
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="eventos" element={<ListaEventos />} />
         <Route path="sectores" element={<SectoresCriticos />} />
+        <Route path="usuarios" element={<GestionUsuarios />} />
         <Route index element={<Navigate to="estadisticas" replace />} />
       </Route>
 

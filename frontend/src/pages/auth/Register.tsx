@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Form, Input, Button, Card, Typography, Alert, Space, App } from 'antd';
+import { Form, Input, Button, Card, Typography, Alert, Space, App, Row, Col } from 'antd';
 import { UserOutlined, MailOutlined, LockOutlined, PhoneOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import { register } from '../../api/auth';
 
@@ -19,11 +19,14 @@ export default function Register() {
     correo: string;
     telefono?: string;
     contrasena: string;
+    confirmar: string;
   }) {
     setLoading(true);
     setError('');
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { confirmar: _, ...payload } = values;
     try {
-      await register(values);
+      await register(payload);
       message.success('Cuenta creada exitosamente. Por favor inicia sesión.');
       navigate('/login');
     } catch (e: any) {
@@ -52,23 +55,26 @@ export default function Register() {
         {error && <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />}
 
         <Form layout="vertical" onFinish={onFinish} size="large">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-            <Form.Item
-              name="nombre"
-              label="Nombre"
-              rules={[{ required: true, message: 'Requerido' }]}
-            >
-              <Input prefix={<UserOutlined />} placeholder="Juan" />
-            </Form.Item>
-
-            <Form.Item
-              name="apellido"
-              label="Apellido"
-              rules={[{ required: true, message: 'Requerido' }]}
-            >
-              <Input placeholder="García" />
-            </Form.Item>
-          </div>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="nombre"
+                label="Nombre"
+                rules={[{ required: true, message: 'Requerido' }]}
+              >
+                <Input prefix={<UserOutlined />} placeholder="Juan" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="apellido"
+                label="Apellido"
+                rules={[{ required: true, message: 'Requerido' }]}
+              >
+                <Input placeholder="García" />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Form.Item
             name="correo"
@@ -88,9 +94,14 @@ export default function Register() {
           <Form.Item
             name="contrasena"
             label="Contraseña"
-            rules={[{ required: true, message: 'Requerido' }, { min: 6, message: 'Mínimo 6 caracteres' }]}
+            rules={[
+              { required: true, message: 'Requerido' },
+              { min: 8, message: 'Mínimo 8 caracteres' },
+              { pattern: /[A-Z]/, message: 'Debe contener al menos una mayúscula' },
+              { pattern: /[0-9]/, message: 'Debe contener al menos un número' },
+            ]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="Mínimo 6 caracteres" />
+            <Input.Password prefix={<LockOutlined />} placeholder="Mín. 8 chars, una mayúscula y un número" />
           </Form.Item>
 
           <Form.Item

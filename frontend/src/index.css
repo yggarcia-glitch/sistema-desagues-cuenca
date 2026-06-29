@@ -10,11 +10,38 @@ body {
   color: #222;
 }
 
+/* Leaflet z-index fix */
 .leaflet-container {
   z-index: 1;
 }
 
+/* Tables no overflow on mobile */
+.ant-table-wrapper {
+  overflow-x: auto;
+}
+
+/* Cards no overflow */
+.ant-card {
+  overflow: hidden;
+}
+
+/* Recharts responsive container */
+.recharts-responsive-container {
+  max-width: 100%;
+}
+
+/* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #f1f1f1; }
 ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #999; }
+
+/* Mobile: reduce font sizes in stats */
+@media (max-width: 576px) {
+  .ant-statistic-content-value {
+    font-size: 24px !important;
+  }
+  .ant-card-body {
+    padding: 16px !important;
+  }
+}
