@@ -1,15 +1,14 @@
-import { IsEnum, IsInt, IsOptional, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { EstadoEvento, Prioridad } from '@prisma/client';
 
 export class FiltrosEventosDto {
   @IsOptional()
-  @IsEnum(EstadoEvento)
-  estado?: EstadoEvento;
+  @IsIn(['pendiente', 'en_proceso', 'resuelto'])
+  estado?: string;
 
   @IsOptional()
-  @IsEnum(Prioridad)
-  prioridad?: Prioridad;
+  @IsIn(['alta', 'media', 'baja'])
+  prioridad?: string;
 
   @IsOptional()
   @Type(() => Number)

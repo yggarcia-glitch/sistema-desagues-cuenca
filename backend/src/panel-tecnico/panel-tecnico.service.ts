@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { EstadoEvento, Prioridad } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FiltrosEventosDto } from './dto/filtros-eventos.dto';
 
@@ -7,17 +6,20 @@ import { FiltrosEventosDto } from './dto/filtros-eventos.dto';
 export class PanelTecnicoService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Lista todos los eventos con filtros opcionales por estado, prioridad y sector
   async getEventos(filtros: FiltrosEventosDto) {
-    const where: {
-      estado?: EstadoEvento;
-      prioridad?: Prioridad;
-      desague?: { sectorId: number };
-    } = {};
+    const where: any = {};
 
-    if (filtros.estado) where.estado = filtros.estado;
-    if (filtros.prioridad) where.prioridad = filtros.prioridad;
-    if (filtros.sectorId) where.desague = { sectorId: filtros.sectorId };
+    if (filtros.estado) {
+      const estado = await this.prisma.estadoEvento.findUnique({ where: { nombre: filtros.estado } });
+      if (estado) where.estadoId = estado.id;
+    }
+    if (filtros.prioridad) {
+      const prioridad = await this.prisma.prioridad.findUnique({ where: { nombre: filtros.prioridad } });
+      if (prioridad) where.prioridadId = prioridad.id;
+    }
+    if (filtros.sectorId) {
+      where.desague = { sectorId: filtros.sectorId };
+    }
 
     return this.prisma.evento.findMany({
       where,
@@ -25,44 +27,40 @@ export class PanelTecnicoService {
         usuario: { select: { id: true, nombre: true, apellido: true } },
         desague: {
           select: {
-            id: true,
-            codigo: true,
-            direccion: true,
-            tipoDesague: true,
+            id: true, codigo: true, direccion: true,
+            tipoDesague: { select: { nombre: true } },
             sector: { select: { id: true, nombre: true } },
           },
         },
+        prioridad: { select: { id: true, nombre: true } },
+        estado: { select: { id: true, nombre: true } },
         fotos: { select: { urlImagen: true } },
-        orden: { select: { id: true, fechaAsignacion: true, resultado: true } },
+        orden: { select: { id: true, fechaAsignacion: true, resultado: { select: { nombre: true } } } },
       },
-      orderBy: [{ prioridad: 'asc' }, { fechaEvento: 'desc' }],
+      orderBy: { fechaEvento: 'desc' },
     });
   }
 
-  // Devuelve solo los campos necesarios para renderizar marcadores en un mapa
-  async getEventosMapa() {
+  getEventosMapa() {
     return this.prisma.evento.findMany({
       select: {
         id: true,
         latitud: true,
         longitud: true,
-        estado: true,
-        prioridad: true,
+        estado: { select: { nombre: true } },
+        prioridad: { select: { nombre: true } },
         descripcion: true,
-        desague: {
-          select: { sector: { select: { nombre: true } } },
-        },
+        desague: { select: { sector: { select: { nombre: true } } } },
       },
     });
   }
 
-  // Devuelve métricas agregadas: totales, por estado, por sector y tiempo promedio de resolución
   async getEstadisticas() {
-    const [total, porEstado, porSector, eventosResueltos] = await Promise.all([
+    const [total, eventosConEstado, desaguesConEventos, eventosResueltos] = await Promise.all([
       this.prisma.evento.count(),
 
       this.prisma.evento.groupBy({
-        by: ['estado'],
+        by: ['estadoId'],
         _count: { id: true },
       }),
 
@@ -73,10 +71,7 @@ export class PanelTecnicoService {
       }),
 
       this.prisma.evento.findMany({
-        where: {
-          estado: EstadoEvento.resuelto,
-          orden: { fechaIntervencion: { not: null } },
-        },
+        where: { estado: { nombre: 'resuelto' }, orden: { fechaIntervencion: { not: null } } },
         select: {
           fechaEvento: true,
           orden: { select: { fechaIntervencion: true } },
@@ -84,18 +79,16 @@ export class PanelTecnicoService {
       }),
     ]);
 
-    const tiempoPromedioHoras =
-      eventosResueltos.length > 0
-        ? eventosResueltos.reduce((acc, e) => {
-            const diff =
-              new Date(e.orden!.fechaIntervencion!).getTime() -
-              new Date(e.fechaEvento).getTime();
-            return acc + diff / (1000 * 60 * 60);
-          }, 0) / eventosResueltos.length
-        : null;
+    const estados = await this.prisma.estadoEvento.findMany({ select: { id: true, nombre: true } });
+    const estadoMap = new Map(estados.map((e) => [e.id, e.nombre]));
+
+    const porEstado = eventosConEstado.map((e) => ({
+      estado: estadoMap.get(e.estadoId) ?? 'desconocido',
+      cantidad: e._count.id,
+    }));
 
     const sectoresConNombre = await Promise.all(
-      porSector.map(async (item) => {
+      desaguesConEventos.map(async (item) => {
         const desague = await this.prisma.desague.findUnique({
           where: { id: item.desagueId },
           select: { sector: { select: { nombre: true } } },
@@ -104,21 +97,36 @@ export class PanelTecnicoService {
       }),
     );
 
+    const porSector = new Map<string, number>();
+    for (const { sector, total } of sectoresConNombre) {
+      porSector.set(sector, (porSector.get(sector) ?? 0) + total);
+    }
+
+    const tiempoPromedioHoras =
+      eventosResueltos.length > 0
+        ? eventosResueltos.reduce((acc, e) => {
+            const diff =
+              new Date(e.orden!.fechaIntervencion!).getTime() - new Date(e.fechaEvento).getTime();
+            return acc + diff / (1000 * 60 * 60);
+          }, 0) / eventosResueltos.length
+        : null;
+
     return {
       total,
-      porEstado: porEstado.map((e) => ({ estado: e.estado, cantidad: e._count.id })),
-      porSector: sectoresConNombre,
+      porEstado,
+      porSector: [...porSector.entries()].map(([sector, total]) => ({ sector, total })),
       tiempoPromedioResolucionHoras: tiempoPromedioHoras
         ? Math.round(tiempoPromedioHoras * 10) / 10
         : null,
     };
   }
 
-  // Devuelve sectores ordenados de mayor a menor cantidad de eventos pendientes
   async getSectoresCriticos() {
+    const estadoPendiente = await this.prisma.estadoEvento.findUnique({ where: { nombre: 'pendiente' } });
+
     const grupos = await this.prisma.evento.groupBy({
       by: ['desagueId'],
-      where: { estado: EstadoEvento.pendiente },
+      where: { estadoId: estadoPendiente!.id },
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
     });
@@ -127,10 +135,7 @@ export class PanelTecnicoService {
       grupos.map(async (item) => {
         const desague = await this.prisma.desague.findUnique({
           where: { id: item.desagueId },
-          select: {
-            sectorId: true,
-            sector: { select: { id: true, nombre: true, descripcion: true } },
-          },
+          select: { sector: { select: { id: true, nombre: true, descripcion: true } } },
         });
         return {
           sectorId: desague?.sector?.id,
@@ -141,7 +146,6 @@ export class PanelTecnicoService {
       }),
     );
 
-    // Consolidar sectores duplicados (varios desagües del mismo sector)
     const mapa = new Map<number, (typeof resultado)[0]>();
     for (const r of resultado) {
       if (!r.sectorId) continue;

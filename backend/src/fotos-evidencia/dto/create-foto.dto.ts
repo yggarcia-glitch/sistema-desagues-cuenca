@@ -1,12 +1,9 @@
-import { IsInt, IsNotEmpty, IsString, IsUrl, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsInt, IsPositive } from 'class-validator';
 
 export class CreateFotoDto {
+  @Type(() => Number)
   @IsInt()
+  @IsPositive()
   eventoId: number;
-
-  @IsNotEmpty()
-  @IsString()
-  @IsUrl()
-  @MaxLength(255)
-  urlImagen: string;
 }

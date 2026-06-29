@@ -1,36 +1,42 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventoDto } from './dto/create-evento.dto';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
+
+const INCLUDE_EVENTO = {
+  usuario: { select: { id: true, nombre: true, apellido: true } },
+  desague: { select: { id: true, codigo: true, direccion: true } },
+  prioridad: { select: { id: true, nombre: true } },
+  estado: { select: { id: true, nombre: true } },
+};
 
 @Injectable()
 export class EventosService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateEventoDto) {
+  async create(dto: CreateEventoDto, usuarioId: number) {
+    const prioridad = await this.prisma.prioridad.findUnique({ where: { nombre: dto.prioridad } });
+    if (!prioridad) throw new BadRequestException(`Prioridad '${dto.prioridad}' no existe`);
+
+    const estadoPendiente = await this.prisma.estadoEvento.findUnique({ where: { nombre: 'pendiente' } });
+
     return this.prisma.evento.create({
       data: {
-        usuarioId: dto.usuarioId,
+        usuarioId,
         desagueId: dto.desagueId,
         descripcion: dto.descripcion,
         latitud: dto.latitud,
         longitud: dto.longitud,
-        prioridad: dto.prioridad,
+        prioridadId: prioridad.id,
+        estadoId: estadoPendiente!.id,
       },
-      include: {
-        usuario: { select: { id: true, nombre: true, apellido: true } },
-        desague: { select: { id: true, codigo: true, direccion: true } },
-      },
+      include: INCLUDE_EVENTO,
     });
   }
 
-  async findAll() {
+  findAll() {
     return this.prisma.evento.findMany({
-      include: {
-        usuario: { select: { id: true, nombre: true, apellido: true } },
-        desague: { select: { id: true, codigo: true, direccion: true } },
-        fotos: true,
-      },
+      include: { ...INCLUDE_EVENTO, fotos: true },
       orderBy: { fechaEvento: 'desc' },
     });
   }
@@ -39,10 +45,16 @@ export class EventosService {
     const evento = await this.prisma.evento.findUnique({
       where: { id },
       include: {
-        usuario: { select: { id: true, nombre: true, apellido: true } },
-        desague: { select: { id: true, codigo: true, direccion: true } },
+        ...INCLUDE_EVENTO,
         fotos: true,
-        historial: { orderBy: { fechaCambio: 'desc' } },
+        historial: {
+          include: {
+            estadoAnterior: { select: { nombre: true } },
+            estadoNuevo: { select: { nombre: true } },
+            usuario: { select: { id: true, nombre: true, apellido: true } },
+          },
+          orderBy: { fechaCambio: 'desc' },
+        },
       },
     });
     if (!evento) throw new NotFoundException(`Evento #${id} no encontrado`);
@@ -53,17 +65,21 @@ export class EventosService {
     const evento = await this.prisma.evento.findUnique({ where: { id } });
     if (!evento) throw new NotFoundException(`Evento #${id} no encontrado`);
 
+    const nuevoEstado = await this.prisma.estadoEvento.findUnique({ where: { nombre: dto.estado } });
+    if (!nuevoEstado) throw new BadRequestException(`Estado '${dto.estado}' no existe`);
+
     return this.prisma.$transaction(async (tx) => {
       const eventoActualizado = await tx.evento.update({
         where: { id },
-        data: { estado: dto.estado },
+        data: { estadoId: nuevoEstado.id },
+        include: INCLUDE_EVENTO,
       });
 
       await tx.historialEstado.create({
         data: {
           eventoId: id,
-          estadoAnterior: evento.estado,
-          estadoNuevo: dto.estado,
+          estadoAnteriorId: evento.estadoId,
+          estadoNuevoId: nuevoEstado.id,
           usuarioId,
         },
       });

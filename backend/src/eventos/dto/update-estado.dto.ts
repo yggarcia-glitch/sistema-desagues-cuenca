@@ -1,7 +1,8 @@
-import { IsEnum } from 'class-validator';
-import { EstadoEvento } from '@prisma/client';
+import { IsIn } from 'class-validator';
 
 export class UpdateEstadoDto {
-  @IsEnum(EstadoEvento)
-  estado: EstadoEvento;
+  @IsIn(['pendiente', 'en_proceso', 'resuelto'], {
+    message: 'El estado debe ser pendiente, en_proceso o resuelto',
+  })
+  estado: string;
 }
