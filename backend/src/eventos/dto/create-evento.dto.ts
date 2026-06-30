@@ -7,10 +7,10 @@ export class CreateEventoDto {
   @MaxLength(500, { message: 'La descripcion no puede superar los 500 caracteres' })
   descripcion: string;
 
-  @IsNumber({ maxDecimalPlaces: 7 })
+  @IsNumber()
   latitud: number;
 
-  @IsNumber({ maxDecimalPlaces: 7 })
+  @IsNumber()
   longitud: number;
 
   @IsIn(['alta', 'media', 'baja'], { message: 'La prioridad debe ser alta, media o baja' })
