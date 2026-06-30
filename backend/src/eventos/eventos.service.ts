@@ -113,6 +113,14 @@ export class EventosService {
     });
   }
 
+  findMios(usuarioId: number) {
+    return this.prisma.evento.findMany({
+      where: { usuarioId },
+      include: { ...INCLUDE_EVENTO, fotos: true },
+      orderBy: { fechaEvento: 'desc' },
+    });
+  }
+
   async findOne(id: number) {
     const evento = await this.prisma.evento.findUnique({
       where: { id },

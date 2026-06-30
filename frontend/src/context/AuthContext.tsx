@@ -44,7 +44,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
-    localStorage.removeItem('mis_reportes');
   };
 
   return (

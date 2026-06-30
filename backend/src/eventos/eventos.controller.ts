@@ -37,6 +37,12 @@ export class EventosController {
     return this.eventosService.findAll();
   }
 
+  @Get('mis-reportes')
+  @Roles('ciudadano')
+  findMios(@Req() req: Request & { user: { id: number } }) {
+    return this.eventosService.findMios(req.user.id);
+  }
+
   @Get(':id')
   @Roles('tecnico', 'admin')
   findOne(@Param('id', ParseIntPipe) id: number) {

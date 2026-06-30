@@ -55,18 +55,6 @@ export default function CrearEvento() {
         prioridad: values.prioridad,
       });
 
-      const stored = JSON.parse(localStorage.getItem('mis_reportes') ?? '[]');
-      stored.unshift({
-        id: evento.id,
-        descripcion: evento.descripcion,
-        prioridad: values.prioridad,
-        estado: 'pendiente',
-        fechaEvento: new Date().toISOString(),
-        latitud: ubicacion.lat,
-        longitud: ubicacion.lng,
-      });
-      localStorage.setItem('mis_reportes', JSON.stringify(stored));
-
       if (fileList.length > 0 && fileList[0].originFileObj) {
         try {
           await subirFoto(evento.id, fileList[0].originFileObj as File);

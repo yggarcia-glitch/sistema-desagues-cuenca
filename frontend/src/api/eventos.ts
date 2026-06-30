@@ -12,6 +12,11 @@ export async function crearEvento(data: CreateEventoData) {
   return res.data;
 }
 
+export async function getMisReportes() {
+  const res = await api.get('/eventos/mis-reportes');
+  return res.data;
+}
+
 export async function getEvento(id: number) {
   const res = await api.get(`/eventos/${id}`);
   return res.data;
