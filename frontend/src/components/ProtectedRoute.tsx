@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom';
+import { Spin } from 'antd';
 import { useAuth } from '../context/AuthContext';
 
 interface Props {
@@ -13,7 +14,9 @@ function getRoleHome(role: string) {
 }
 
 export default function ProtectedRoute({ children, roles }: Props) {
-  const { usuario, isAuthenticated } = useAuth();
+  const { usuario, isAuthenticated, loading } = useAuth();
+
+  if (loading) return <Spin size="large" style={{ display: 'flex', justifyContent: 'center', marginTop: 100 }} />;
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
