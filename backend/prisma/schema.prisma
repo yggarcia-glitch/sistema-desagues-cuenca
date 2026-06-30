@@ -84,16 +84,18 @@ model Usuario {
 }
 
 model Desague {
-  id            Int     @id @default(autoincrement())
-  codigo        String  @db.VarChar(20)
-  latitud       Decimal @db.Decimal(10, 7)
-  longitud      Decimal @db.Decimal(10, 7)
-  direccion     String  @db.VarChar(200)
-  tipoDesagueId Int     @map("tipo_desague_id")
-  sectorId      Int     @map("sector_id")
+  id            Int      @id @default(autoincrement())
+  codigo        String   @db.VarChar(30)
+  latitud       Decimal  @db.Decimal(10, 7)
+  longitud      Decimal  @db.Decimal(10, 7)
+  direccion     String   @db.VarChar(200)
+  tipoDesagueId Int?     @map("tipo_desague_id")
+  sectorId      Int?     @map("sector_id")
+  verificado    Boolean  @default(false)
+  fuenteDatos   String?  @map("fuente_datos") @db.VarChar(30)
 
-  tipoDesague TipoDesague @relation(fields: [tipoDesagueId], references: [id])
-  sector      Sector      @relation(fields: [sectorId], references: [id])
+  tipoDesague TipoDesague? @relation(fields: [tipoDesagueId], references: [id])
+  sector      Sector?      @relation(fields: [sectorId], references: [id])
   eventos     Evento[]
 
   @@map("desagues")

@@ -1,7 +1,6 @@
 import api from './axiosClient';
 
 export interface CreateEventoData {
-  desagueId: number;
   descripcion: string;
   latitud: number;
   longitud: number;

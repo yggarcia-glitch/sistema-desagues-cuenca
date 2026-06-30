@@ -1,23 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Card, Form, Input, Select, Button, Typography, App,
-  Upload, Space, Tag, Alert,
+  Upload, Space, Tag, Alert, Grid,
 } from 'antd';
-import { UploadOutlined, EnvironmentOutlined } from '@ant-design/icons';
+import { UploadOutlined, EnvironmentOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { Grid } from 'antd';
 import type { UploadFile } from 'antd';
+import { crearEvento, subirFoto } from '../../api/eventos';
 
 const { useBreakpoint } = Grid;
-import { crearEvento, subirFoto, getDesagues } from '../../api/eventos';
-import type { Desague } from '../../types';
-
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const PRIMARY = '#1B5E20';
 
-// Fix default marker icons for Vite
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -28,54 +24,37 @@ L.Icon.Default.mergeOptions({
 const CUENCA_CENTER: [number, number] = [-2.9001, -79.0059];
 
 function LocationPicker({ onSelect }: { onSelect: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click: (e) => onSelect(e.latlng.lat, e.latlng.lng),
-  });
+  useMapEvents({ click: (e) => onSelect(e.latlng.lat, e.latlng.lng) });
   return null;
 }
 
 export default function CrearEvento() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [desagues, setDesagues] = useState<Desague[]>([]);
   const [ubicacion, setUbicacion] = useState<{ lat: number; lng: number } | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const { message } = App.useApp();
   const screens = useBreakpoint();
-  const mapHeight = screens.md ? 380 : 260;
-
-  useEffect(() => {
-    getDesagues()
-      .then(setDesagues)
-      .catch(() => message.warning('No se pudieron cargar los desagüe. Contacta al administrador.'));
-  }, []);
-
-  function handleMapClick(lat: number, lng: number) {
-    setUbicacion({ lat, lng });
-    form.setFieldsValue({ latitud: lat.toFixed(7), longitud: lng.toFixed(7) });
-  }
+  const mapHeight = screens.md ? 420 : 280;
 
   async function onFinish(values: {
-    desagueId: number;
     descripcion: string;
     prioridad: 'alta' | 'media' | 'baja';
   }) {
     if (!ubicacion) {
-      message.error('Selecciona la ubicación en el mapa haciendo clic sobre él.');
+      message.error('Marca la ubicación en el mapa antes de enviar.');
       return;
     }
     setLoading(true);
     try {
       const evento = await crearEvento({
-        desagueId: Number(values.desagueId),
         descripcion: values.descripcion,
         latitud: ubicacion.lat,
         longitud: ubicacion.lng,
         prioridad: values.prioridad,
       });
 
-      // Save to localStorage for "Mis Reportes"
       const stored = JSON.parse(localStorage.getItem('mis_reportes') ?? '[]');
       stored.unshift({
         id: evento.id,
@@ -88,21 +67,20 @@ export default function CrearEvento() {
       });
       localStorage.setItem('mis_reportes', JSON.stringify(stored));
 
-      // Upload photo if provided
       if (fileList.length > 0 && fileList[0].originFileObj) {
         try {
           await subirFoto(evento.id, fileList[0].originFileObj as File);
         } catch {
-          message.warning('Reporte creado pero no se pudo subir la foto.');
+          message.warning('Reporte enviado pero no se pudo subir la foto.');
         }
       }
 
-      message.success(`Reporte #${evento.id} enviado exitosamente.`);
+      message.success(`¡Reporte #${evento.id} enviado! El equipo técnico lo atenderá pronto.`);
       setSubmitted(true);
       form.resetFields();
       setUbicacion(null);
       setFileList([]);
-      setTimeout(() => setSubmitted(false), 4000);
+      setTimeout(() => setSubmitted(false), 5000);
     } catch (e: any) {
       message.error(e.response?.data?.message ?? 'Error al enviar el reporte. Intenta de nuevo.');
     } finally {
@@ -111,18 +89,18 @@ export default function CrearEvento() {
   }
 
   return (
-    <div style={{ maxWidth: 780, margin: '0 auto' }}>
+    <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <Title level={3} style={{ color: PRIMARY, marginBottom: 4 }}>
-        <EnvironmentOutlined /> Crear Reporte de Desagüe
+        <EnvironmentOutlined /> Reportar Desagüe Obstruido
       </Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        Reporta un desagüeobstruido en tu sector. Nuestro equipo técnico atenderá tu solicitud.
+        Marca en el mapa dónde está el problema y describe lo que ves. El equipo técnico lo atenderá.
       </Text>
 
       {submitted && (
         <Alert
           message="¡Reporte enviado exitosamente!"
-          description="Tu reporte fue registrado. Puedes ver el estado en 'Mis Reportes'."
+          description="Tu reporte fue registrado. Puedes ver su estado en 'Mis Reportes'."
           type="success"
           showIcon
           style={{ marginBottom: 16 }}
@@ -130,29 +108,68 @@ export default function CrearEvento() {
       )}
 
       <Form form={form} layout="vertical" onFinish={onFinish} size="large">
-        <Card style={{ marginBottom: 16, borderRadius: 8 }}>
-          <Form.Item
-            name="desagueId"
-            label="Desagüe afectado"
-            rules={[{ required: true, message: 'Selecciona un desagüe' }]}
-          >
-            <Select
-              placeholder="Selecciona el desagüepor su código o dirección"
-              showSearch
-              optionFilterProp="label"
-              options={desagues.map((d) => ({
-                value: d.id,
-                label: `${d.codigo} — ${d.direccion}${d.sector ? ' (' + d.sector.nombre + ')' : ''}`,
-              }))}
-            />
-          </Form.Item>
 
+        <Card
+          style={{ marginBottom: 16, borderRadius: 8 }}
+          title={
+            <Space>
+              <EnvironmentOutlined style={{ color: PRIMARY }} />
+              <span>1. Marca la ubicación en el mapa</span>
+            </Space>
+          }
+        >
+          {!ubicacion ? (
+            <Alert
+              message="Toca o haz clic en el mapa para indicar dónde está el desagüe obstruido"
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+            />
+          ) : (
+            <Alert
+              icon={<CheckCircleOutlined />}
+              message={
+                <Space>
+                  <Text>Ubicación marcada correctamente.</Text>
+                  <a
+                    onClick={() => setUbicacion(null)}
+                    style={{ cursor: 'pointer', fontSize: 12 }}
+                  >
+                    Cambiar
+                  </a>
+                </Space>
+              }
+              type="success"
+              showIcon
+              style={{ marginBottom: 12 }}
+            />
+          )}
+
+          <div style={{ height: mapHeight, borderRadius: 8, overflow: 'hidden' }}>
+            <MapContainer center={CUENCA_CENTER} zoom={15} style={{ height: '100%', width: '100%' }}>
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <LocationPicker onSelect={(lat, lng) => setUbicacion({ lat, lng })} />
+              {ubicacion && <Marker position={[ubicacion.lat, ubicacion.lng]} />}
+            </MapContainer>
+          </div>
+
+          {ubicacion && (
+            <Text type="secondary" style={{ fontSize: 11, marginTop: 6, display: 'block' }}>
+              Coordenadas: {ubicacion.lat.toFixed(6)}, {ubicacion.lng.toFixed(6)}
+            </Text>
+          )}
+        </Card>
+
+        <Card style={{ marginBottom: 16, borderRadius: 8 }} title="2. Describe el problema">
           <Form.Item
             name="descripcion"
-            label="Descripción del problema"
+            label="¿Qué está pasando?"
             rules={[
               { required: true, message: 'Describe el problema' },
-              { min: 20, message: 'Mínimo 20 caracteres' },
+              { min: 20, message: 'Describe con más detalle (mínimo 20 caracteres)' },
               { max: 500, message: 'Máximo 500 caracteres' },
             ]}
           >
@@ -160,24 +177,24 @@ export default function CrearEvento() {
               rows={4}
               showCount
               maxLength={500}
-              placeholder="Describe el problema con detalle. Ej: El desagüeestá completamente bloqueado con basura, se acumula agua en la calle..."
+              placeholder="Ej: El desagüe está completamente bloqueado con basura, se acumula agua en la calle y hay mal olor..."
             />
           </Form.Item>
 
           <Form.Item
             name="prioridad"
-            label="Prioridad"
-            rules={[{ required: true, message: 'Selecciona la prioridad' }]}
+            label="¿Qué tan urgente es?"
+            rules={[{ required: true, message: 'Selecciona la urgencia' }]}
           >
-            <Select placeholder="¿Qué tan urgente es?">
+            <Select placeholder="Selecciona la urgencia">
               <Select.Option value="alta">
-                <Tag color="red">ALTA</Tag> — Riesgo inmediato, agua acumulada
+                <Tag color="red">URGENTE</Tag> — Agua acumulada, riesgo de inundación
               </Select.Option>
               <Select.Option value="media">
-                <Tag color="orange">MEDIA</Tag> — Bloqueo parcial
+                <Tag color="orange">MODERADO</Tag> — Bloqueo parcial, fluye con dificultad
               </Select.Option>
               <Select.Option value="baja">
-                <Tag color="green">BAJA</Tag> — Mantenimiento preventivo
+                <Tag color="green">LEVE</Tag> — Sin urgencia, mantenimiento preventivo
               </Select.Option>
             </Select>
           </Form.Item>
@@ -190,47 +207,9 @@ export default function CrearEvento() {
               accept="image/*"
               maxCount={1}
             >
-              <Button icon={<UploadOutlined />}>Seleccionar foto</Button>
+              <Button icon={<UploadOutlined />}>Adjuntar foto</Button>
             </Upload>
           </Form.Item>
-        </Card>
-
-        <Card
-          title={
-            <Space>
-              <EnvironmentOutlined style={{ color: PRIMARY }} />
-              <span>Ubicación en el mapa</span>
-              {ubicacion && (
-                <Tag color="green">
-                  {ubicacion.lat.toFixed(5)}, {ubicacion.lng.toFixed(5)}
-                </Tag>
-              )}
-            </Space>
-          }
-          style={{ marginBottom: 16, borderRadius: 8 }}
-        >
-          {!ubicacion && (
-            <Alert
-              message="Haz clic en el mapa para marcar la ubicación exacta del desagüe"
-              type="info"
-              showIcon
-              style={{ marginBottom: 12 }}
-            />
-          )}
-          <div style={{ height: mapHeight, borderRadius: 8, overflow: 'hidden' }}>
-            <MapContainer
-              center={CUENCA_CENTER}
-              zoom={14}
-              style={{ height: '100%', width: '100%' }}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <LocationPicker onSelect={handleMapClick} />
-              {ubicacion && <Marker position={[ubicacion.lat, ubicacion.lng]} />}
-            </MapContainer>
-          </div>
         </Card>
 
         <Form.Item>
@@ -239,10 +218,11 @@ export default function CrearEvento() {
             htmlType="submit"
             block
             loading={loading}
+            disabled={!ubicacion}
             size="large"
-            style={{ background: PRIMARY, borderColor: PRIMARY, height: 48, fontSize: 16 }}
+            style={{ background: PRIMARY, borderColor: PRIMARY, height: 50, fontSize: 16 }}
           >
-            Enviar Reporte
+            {ubicacion ? 'Enviar Reporte' : 'Primero marca la ubicación en el mapa'}
           </Button>
         </Form.Item>
       </Form>
