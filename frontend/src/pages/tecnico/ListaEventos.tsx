@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Tag, Typography, Select, Space, Button,
-  Modal, App, Row, Col, Avatar,
+  Modal, App, Row, Col, Avatar, Image,
 } from 'antd';
 import { SyncOutlined, FilterOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -12,6 +12,11 @@ import type { FiltrosEventos } from '../../api/panel';
 
 const { Title, Text } = Typography;
 const PRIMARY = '#1B5E20';
+const BACKEND = (import.meta.env.VITE_API_URL as string) ?? '';
+
+function fotoUrl(urlImagen: string) {
+  return `${BACKEND}/${urlImagen.replace(/\\/g, '/')}`;
+}
 
 const PRIORIDAD_COLOR: Record<string, string> = { alta: 'red', media: 'orange', baja: 'green' };
 const ESTADO_COLOR: Record<string, string> = { pendiente: 'default', en_proceso: 'blue', resuelto: 'success' };
@@ -191,6 +196,29 @@ export default function ListaEventos() {
         {modalEvento && (
           <Space direction="vertical" style={{ width: '100%' }}>
             <Text type="secondary">{modalEvento.descripcion}</Text>
+
+            {modalEvento.fotos && modalEvento.fotos.length > 0 && (
+              <div>
+                <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                  Fotos de evidencia ({modalEvento.fotos.length})
+                </Text>
+                <Image.PreviewGroup>
+                  <Space wrap>
+                    {modalEvento.fotos.map((f, i) => (
+                      <Image
+                        key={i}
+                        src={fotoUrl(f.urlImagen)}
+                        width={100}
+                        height={100}
+                        style={{ objectFit: 'cover', borderRadius: 6, border: '1px solid #d9d9d9' }}
+                        alt={`Foto evidencia ${i + 1}`}
+                      />
+                    ))}
+                  </Space>
+                </Image.PreviewGroup>
+              </div>
+            )}
+
             <Select
               value={nuevoEstado}
               onChange={setNuevoEstado}
