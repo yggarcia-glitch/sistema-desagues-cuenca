@@ -31,9 +31,7 @@ export async function subirFoto(eventoId: number, foto: File) {
   const formData = new FormData();
   formData.append('foto', foto);
   formData.append('eventoId', String(eventoId));
-  const res = await api.post('/fotos-evidencia', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  const res = await api.post('/fotos-evidencia', formData);
   return res.data;
 }
 
