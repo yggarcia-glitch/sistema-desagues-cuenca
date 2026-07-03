@@ -13,16 +13,18 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CreateFotoDto } from './dto/create-foto.dto';
 import { FotosEvidenciaService } from './fotos-evidencia.service';
 
+const UPLOADS_DIR = join(__dirname, '..', '..', '..', 'uploads');
+
 const multerConfig = {
   storage: diskStorage({
-    destination: './uploads',
+    destination: UPLOADS_DIR,
     filename: (_req, file, cb) => {
       cb(null, `foto-${Date.now()}${extname(file.originalname)}`);
     },
@@ -51,7 +53,7 @@ export class FotosEvidenciaController {
     @Body() dto: CreateFotoDto,
   ) {
     if (!file) throw new BadRequestException('La foto es obligatoria');
-    return this.fotosService.create(dto.eventoId, file.path);
+    return this.fotosService.create(dto.eventoId, `uploads/${file.filename}`);
   }
 
   @Get()

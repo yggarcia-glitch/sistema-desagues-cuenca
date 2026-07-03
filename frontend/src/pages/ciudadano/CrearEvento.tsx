@@ -58,8 +58,9 @@ export default function CrearEvento() {
       if (fileList.length > 0 && fileList[0].originFileObj) {
         try {
           await subirFoto(evento.id, fileList[0].originFileObj as File);
-        } catch {
-          message.warning('Reporte enviado pero no se pudo subir la foto.');
+        } catch (fotoErr: any) {
+          const detalle = fotoErr?.response?.data?.message ?? fotoErr?.message ?? 'error desconocido';
+          message.warning(`Reporte enviado pero no se pudo subir la foto: ${detalle}`);
         }
       }
 
