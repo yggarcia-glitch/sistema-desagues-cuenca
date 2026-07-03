@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Form, Input, Button, Card, Typography, Alert, Space, App, Row, Col } from 'antd';
 import { UserOutlined, MailOutlined, LockOutlined, PhoneOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import { register } from '../../api/auth';
+import { useAuth } from '../../context/AuthContext';
 
 const { Title, Text } = Typography;
 const PRIMARY = '#1B5E20';
@@ -12,6 +13,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const { message } = App.useApp();
+  const { doLogin } = useAuth();
 
   async function onFinish(values: {
     nombre: string;
@@ -26,9 +28,11 @@ export default function Register() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { confirmar: _, ...payload } = values;
     try {
-      await register(payload);
-      message.success('Cuenta creada exitosamente. Por favor inicia sesión.');
-      navigate('/login');
+      const data = await register(payload);
+      const usuario = { ...data.usuario, tipoUsuario: data.usuario.tipoUsuario.nombre };
+      doLogin(usuario, data.token);
+      message.success(`¡Bienvenido/a, ${usuario.nombre}! Tu cuenta fue creada exitosamente.`);
+      navigate('/ciudadano/mis-reportes');
     } catch (e: any) {
       setError(e.response?.data?.message ?? 'Error al registrar. Intenta de nuevo.');
     } finally {
