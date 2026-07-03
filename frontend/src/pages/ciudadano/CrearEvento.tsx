@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
-  Card, Form, Input, Select, Button, Typography, App,
-  Upload, Space, Tag, Alert, Grid,
+  Card, Form, Input, Button, Typography, App,
+  Upload, Space, Alert, Grid, Row, Col,
 } from 'antd';
-import { UploadOutlined, EnvironmentOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { UploadOutlined, EnvironmentOutlined, CheckCircleOutlined, ThunderboltOutlined, WarningOutlined, CheckOutlined } from '@ant-design/icons';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import type { UploadFile } from 'antd';
@@ -23,6 +23,36 @@ L.Icon.Default.mergeOptions({
 
 const CUENCA_CENTER: [number, number] = [-2.9001, -79.0059];
 
+const PRIORIDADES = [
+  {
+    value: 'alta' as const,
+    label: 'URGENTE',
+    descripcion: 'Agua acumulada, riesgo de inundación',
+    color: '#ff4d4f',
+    bg: '#fff1f0',
+    border: '#ff4d4f',
+    icon: <ThunderboltOutlined />,
+  },
+  {
+    value: 'media' as const,
+    label: 'MODERADO',
+    descripcion: 'Bloqueo parcial, fluye con dificultad',
+    color: '#fa8c16',
+    bg: '#fff7e6',
+    border: '#fa8c16',
+    icon: <WarningOutlined />,
+  },
+  {
+    value: 'baja' as const,
+    label: 'LEVE',
+    descripcion: 'Sin urgencia, mantenimiento preventivo',
+    color: '#52c41a',
+    bg: '#f6ffed',
+    border: '#52c41a',
+    icon: <CheckOutlined />,
+  },
+];
+
 function LocationPicker({ onSelect }: { onSelect: (lat: number, lng: number) => void }) {
   useMapEvents({ click: (e) => onSelect(e.latlng.lat, e.latlng.lng) });
   return null;
@@ -32,27 +62,32 @@ export default function CrearEvento() {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [ubicacion, setUbicacion] = useState<{ lat: number; lng: number } | null>(null);
+  const [prioridad, setPrioridad] = useState<'alta' | 'media' | 'baja' | null>(null);
+  const [prioridadError, setPrioridadError] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const { message } = App.useApp();
   const screens = useBreakpoint();
   const mapHeight = screens.md ? 420 : 280;
 
-  async function onFinish(values: {
-    descripcion: string;
-    prioridad: 'alta' | 'media' | 'baja';
-  }) {
+  async function onFinish(values: { descripcion?: string }) {
     if (!ubicacion) {
       message.error('Marca la ubicación en el mapa antes de enviar.');
       return;
     }
+    if (!prioridad) {
+      setPrioridadError(true);
+      message.error('Selecciona el nivel de urgencia.');
+      return;
+    }
+    setPrioridadError(false);
     setLoading(true);
     try {
       const evento = await crearEvento({
-        descripcion: values.descripcion,
+        descripcion: values.descripcion ?? '',
         latitud: ubicacion.lat,
         longitud: ubicacion.lng,
-        prioridad: values.prioridad,
+        prioridad,
       });
 
       if (fileList.length > 0 && fileList[0].originFileObj) {
@@ -68,6 +103,7 @@ export default function CrearEvento() {
       setSubmitted(true);
       form.resetFields();
       setUbicacion(null);
+      setPrioridad(null);
       setFileList([]);
       setTimeout(() => setSubmitted(false), 5000);
     } catch (e: any) {
@@ -120,10 +156,7 @@ export default function CrearEvento() {
               message={
                 <Space>
                   <Text>Ubicación marcada correctamente.</Text>
-                  <a
-                    onClick={() => setUbicacion(null)}
-                    style={{ cursor: 'pointer', fontSize: 12 }}
-                  >
+                  <a onClick={() => setUbicacion(null)} style={{ cursor: 'pointer', fontSize: 12 }}>
                     Cambiar
                   </a>
                 </Space>
@@ -152,40 +185,61 @@ export default function CrearEvento() {
           )}
         </Card>
 
-        <Card style={{ marginBottom: 16, borderRadius: 8 }} title="2. Describe el problema">
+        {/* Urgencia justo debajo del mapa */}
+        <div style={{ marginBottom: 16 }}>
+          <Text strong style={{ display: 'block', marginBottom: 8, fontSize: 15 }}>
+            2. ¿Qué tan urgente es?
+          </Text>
+          {prioridadError && (
+            <Text type="danger" style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
+              Selecciona el nivel de urgencia
+            </Text>
+          )}
+          <Row gutter={12}>
+            {PRIORIDADES.map((p) => {
+              const seleccionada = prioridad === p.value;
+              return (
+                <Col xs={8} key={p.value}>
+                  <Card
+                    hoverable
+                    onClick={() => { setPrioridad(p.value); setPrioridadError(false); }}
+                    style={{
+                      borderRadius: 8,
+                      borderColor: seleccionada ? p.border : '#d9d9d9',
+                      borderWidth: seleccionada ? 2 : 1,
+                      background: seleccionada ? p.bg : '#fff',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      transition: 'all 0.2s',
+                    }}
+                    styles={{ body: { padding: '12px 8px' } }}
+                  >
+                    <div style={{ fontSize: 22, color: p.color, marginBottom: 4 }}>{p.icon}</div>
+                    <Text strong style={{ color: p.color, fontSize: 13, display: 'block' }}>
+                      {p.label}
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {p.descripcion}
+                    </Text>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Row>
+        </div>
+
+        <Card style={{ marginBottom: 16, borderRadius: 8 }} title="3. Describe el problema (opcional)">
           <Form.Item
             name="descripcion"
             label="¿Qué está pasando?"
-            rules={[
-              { required: true, message: 'Describe el problema' },
-              { min: 20, message: 'Describe con más detalle (mínimo 20 caracteres)' },
-              { max: 500, message: 'Máximo 500 caracteres' },
-            ]}
+            rules={[{ max: 500, message: 'Máximo 500 caracteres' }]}
           >
             <TextArea
               rows={4}
               showCount
               maxLength={500}
-              placeholder="Ej: El desagüe está completamente bloqueado con basura, se acumula agua en la calle y hay mal olor..."
+              placeholder="Ej: El desagüe está completamente bloqueado con basura, se acumula agua en la calle..."
             />
-          </Form.Item>
-
-          <Form.Item
-            name="prioridad"
-            label="¿Qué tan urgente es?"
-            rules={[{ required: true, message: 'Selecciona la urgencia' }]}
-          >
-            <Select placeholder="Selecciona la urgencia">
-              <Select.Option value="alta">
-                <Tag color="red">URGENTE</Tag> — Agua acumulada, riesgo de inundación
-              </Select.Option>
-              <Select.Option value="media">
-                <Tag color="orange">MODERADO</Tag> — Bloqueo parcial, fluye con dificultad
-              </Select.Option>
-              <Select.Option value="baja">
-                <Tag color="green">LEVE</Tag> — Sin urgencia, mantenimiento preventivo
-              </Select.Option>
-            </Select>
           </Form.Item>
 
           <Form.Item label="Foto de evidencia (opcional)">
