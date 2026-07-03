@@ -3,7 +3,7 @@ import {
   Card, Table, Tag, Typography, Select, Space, Button,
   Modal, App, Row, Col, Avatar, Image,
 } from 'antd';
-import { SyncOutlined, FilterOutlined } from '@ant-design/icons';
+import { SyncOutlined, FilterOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { getPanelEventos } from '../../api/panel';
 import { updateEstado } from '../../api/eventos';
@@ -218,6 +218,15 @@ export default function ListaEventos() {
                 </Image.PreviewGroup>
               </div>
             )}
+
+            <a
+              href={`https://www.google.com/maps?q=${modalEvento.latitud},${modalEvento.longitud}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <EnvironmentOutlined /> Ver ubicación exacta en Google Maps
+            </a>
 
             <Select
               value={nuevoEstado}
