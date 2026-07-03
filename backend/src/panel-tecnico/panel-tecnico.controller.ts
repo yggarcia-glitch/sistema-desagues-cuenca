@@ -29,6 +29,12 @@ export class PanelTecnicoController {
     return this.panelTecnicoService.getEstadisticas();
   }
 
+  // Retorna eventos prioridad alta/media que están pendientes o en proceso, ordenados por más antiguos
+  @Get('eventos/criticos')
+  getEventosCriticos() {
+    return this.panelTecnicoService.getEventosCriticos();
+  }
+
   // Retorna sectores ordenados por cantidad de eventos pendientes (más críticos primero)
   @Get('sectores/criticos')
   getSectoresCriticos() {

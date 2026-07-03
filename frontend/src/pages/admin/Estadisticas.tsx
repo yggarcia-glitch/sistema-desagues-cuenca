@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Typography, Spin, Space } from 'antd';
-import { ClockCircleOutlined, BarChartOutlined } from '@ant-design/icons';
+import {
+  Card, Row, Col, Statistic, Typography, Spin, Space, Table, Tag, Progress, Badge,
+} from 'antd';
+import {
+  ClockCircleOutlined, BarChartOutlined, WarningOutlined,
+} from '@ant-design/icons';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   PieChart, Pie, Cell, ResponsiveContainer,
 } from 'recharts';
-import { getEstadisticas } from '../../api/panel';
+import { getEstadisticas, getEventosCriticos } from '../../api/panel';
 import type { Estadisticas } from '../../types';
+import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Text } = Typography;
 const PRIMARY = '#1B5E20';
@@ -16,15 +21,53 @@ const ESTADO_COLORS: Record<string, string> = {
   en_proceso: '#1565c0',
   resuelto: '#2e7d32',
 };
+const ESTADO_LABEL: Record<string, string> = {
+  pendiente: 'Pendiente',
+  en_proceso: 'En Proceso',
+  resuelto: 'Resuelto',
+};
 const PIE_FALLBACK_COLORS = ['#f57c00', '#1565c0', '#2e7d32', '#6a1b9a', '#c62828'];
+
+const LIMITE_HORAS: Record<string, number> = { alta: 24, media: 48, baja: 72 };
+
+interface EventoCritico {
+  id: number;
+  descripcion: string;
+  fechaEvento: string;
+  prioridad: { nombre: string };
+  estado: { nombre: string };
+  usuario?: { nombre: string; apellido: string };
+  desague?: { sector?: { nombre: string } };
+}
+
+function horasTranscurridas(fecha: string): number {
+  return (Date.now() - new Date(fecha).getTime()) / (1000 * 60 * 60);
+}
+
+function formatHoras(horas: number): string {
+  if (horas < 1) return 'Menos de 1 h';
+  if (horas < 24) return `${Math.floor(horas)} h ${Math.round((horas % 1) * 60)} min`;
+  const dias = Math.floor(horas / 24);
+  const h = Math.round(horas % 24);
+  return h > 0 ? `${dias} d ${h} h` : `${dias} d`;
+}
+
+function formatPromedioHoras(horas: number): string {
+  if (horas < 1) return 'Menos de 1 hora';
+  if (horas < 24) return `${horas.toFixed(1)} h`;
+  const dias = Math.floor(horas / 24);
+  const h = Math.round(horas % 24);
+  return h > 0 ? `${dias} d ${h} h` : `${dias} d`;
+}
 
 export default function Estadisticas() {
   const [stats, setStats] = useState<Estadisticas | null>(null);
+  const [criticos, setCriticos] = useState<EventoCritico[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getEstadisticas()
-      .then(setStats)
+    Promise.all([getEstadisticas(), getEventosCriticos()])
+      .then(([s, c]) => { setStats(s); setCriticos(c); })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -38,7 +81,7 @@ export default function Estadisticas() {
   }
 
   const pieData = stats.porEstado.map((e) => ({
-    name: e.estado === 'en_proceso' ? 'En Proceso' : e.estado.charAt(0).toUpperCase() + e.estado.slice(1),
+    name: ESTADO_LABEL[e.estado] ?? e.estado,
     value: e.cantidad,
     color: ESTADO_COLORS[e.estado] ?? '#888',
   }));
@@ -48,6 +91,98 @@ export default function Estadisticas() {
     sectorFull: s.sector,
     eventos: s.total,
   }));
+
+  const columnasCriticos: ColumnsType<EventoCritico> = [
+    {
+      title: '#',
+      dataIndex: 'id',
+      width: 60,
+      render: (id: number) => <Text strong>#{id}</Text>,
+    },
+    {
+      title: 'Ciudadano',
+      key: 'usuario',
+      width: 140,
+      render: (_, r) => r.usuario ? `${r.usuario.nombre} ${r.usuario.apellido}` : '—',
+    },
+    {
+      title: 'Sector',
+      key: 'sector',
+      width: 120,
+      render: (_, r) => r.desague?.sector?.nombre ?? '—',
+    },
+    {
+      title: 'Descripción',
+      dataIndex: 'descripcion',
+      ellipsis: true,
+      render: (d: string) => d || <Text type="secondary">Sin descripción</Text>,
+    },
+    {
+      title: 'Prioridad',
+      key: 'prioridad',
+      width: 100,
+      render: (_, r) => (
+        <Tag color={r.prioridad.nombre === 'alta' ? 'red' : 'orange'}>
+          {r.prioridad.nombre.toUpperCase()}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Estado',
+      key: 'estado',
+      width: 110,
+      render: (_, r) => (
+        <Tag color={ESTADO_COLORS[r.estado.nombre]}>
+          {ESTADO_LABEL[r.estado.nombre] ?? r.estado.nombre}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Tiempo abierto',
+      key: 'tiempo',
+      width: 130,
+      render: (_, r) => {
+        const horas = horasTranscurridas(r.fechaEvento);
+        const limite = LIMITE_HORAS[r.prioridad.nombre] ?? 48;
+        const pct = Math.min((horas / limite) * 100, 100);
+        const vencido = horas >= limite;
+        const porVencer = !vencido && pct >= 50;
+        return (
+          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+            <Text style={{ fontSize: 12 }}>{formatHoras(horas)}</Text>
+            <Progress
+              percent={Math.round(pct)}
+              size="small"
+              showInfo={false}
+              strokeColor={vencido ? '#cf1322' : porVencer ? '#fa8c16' : '#52c41a'}
+            />
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Límite',
+      key: 'limite',
+      width: 110,
+      render: (_, r) => {
+        const horas = horasTranscurridas(r.fechaEvento);
+        const limite = LIMITE_HORAS[r.prioridad.nombre] ?? 48;
+        const vencido = horas >= limite;
+        const porVencer = !vencido && (horas / limite) >= 0.5;
+        return (
+          <Space direction="vertical" size={2}>
+            <Text type="secondary" style={{ fontSize: 11 }}>{limite} h máx.</Text>
+            {vencido
+              ? <Badge status="error" text={<Text style={{ fontSize: 11, color: '#cf1322' }}>Vencido</Text>} />
+              : porVencer
+                ? <Badge status="warning" text={<Text style={{ fontSize: 11, color: '#fa8c16' }}>Por vencer</Text>} />
+                : <Badge status="success" text={<Text style={{ fontSize: 11, color: '#52c41a' }}>A tiempo</Text>} />
+            }
+          </Space>
+        );
+      },
+    },
+  ];
 
   return (
     <div>
@@ -92,22 +227,51 @@ export default function Estadisticas() {
       </Row>
 
       {/* Tiempo promedio */}
-      {stats.tiempoPromedioResolucionHoras !== null && (
-        <Card style={{ marginBottom: 24, borderRadius: 8 }}>
+      <Card style={{ marginBottom: 24, borderRadius: 8 }}>
+        <Space>
+          <ClockCircleOutlined style={{ fontSize: 28, color: PRIMARY }} />
+          <div>
+            <Text type="secondary">Tiempo promedio de resolución</Text>
+            <Title level={4} style={{ margin: 0, color: PRIMARY }}>
+              {stats.tiempoPromedioResolucionHoras !== null
+                ? formatPromedioHoras(stats.tiempoPromedioResolucionHoras)
+                : 'Sin eventos resueltos aún'}
+            </Title>
+          </div>
+        </Space>
+      </Card>
+
+      {/* Eventos críticos */}
+      <Card
+        style={{ marginBottom: 24, borderRadius: 8 }}
+        title={
           <Space>
-            <ClockCircleOutlined style={{ fontSize: 28, color: PRIMARY }} />
-            <div>
-              <Text type="secondary">Tiempo promedio de resolución</Text>
-              <Title level={4} style={{ margin: 0, color: PRIMARY }}>
-                {stats.tiempoPromedioResolucionHoras} horas
-              </Title>
-            </div>
+            <WarningOutlined style={{ color: '#cf1322' }} />
+            <span>Eventos Críticos Abiertos</span>
+            <Tag color="red">{criticos.length}</Tag>
           </Space>
-        </Card>
-      )}
+        }
+      >
+        {criticos.length === 0 ? (
+          <Text type="secondary">No hay eventos críticos abiertos. ¡Todo bajo control!</Text>
+        ) : (
+          <Table
+            dataSource={criticos}
+            columns={columnasCriticos}
+            rowKey="id"
+            pagination={{ pageSize: 8, showTotal: (t) => `${t} eventos` }}
+            scroll={{ x: 900 }}
+            rowClassName={(r) => {
+              const horas = horasTranscurridas(r.fechaEvento);
+              const limite = LIMITE_HORAS[r.prioridad.nombre] ?? 48;
+              return horas >= limite ? 'ant-table-row-danger' : '';
+            }}
+          />
+        )}
+      </Card>
 
       <Row gutter={[16, 16]}>
-        {/* Pie: distribución por estado */}
+        {/* Pie */}
         <Col xs={24} lg={10}>
           <Card title="Distribución por Estado" style={{ borderRadius: 8 }}>
             <ResponsiveContainer width="100%" height={280}>
@@ -123,10 +287,7 @@ export default function Estadisticas() {
                   labelLine={true}
                 >
                   {pieData.map((entry, index) => (
-                    <Cell
-                      key={index}
-                      fill={entry.color ?? PIE_FALLBACK_COLORS[index % PIE_FALLBACK_COLORS.length]}
-                    />
+                    <Cell key={index} fill={entry.color ?? PIE_FALLBACK_COLORS[index % PIE_FALLBACK_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(v) => [`${v} eventos`, '']} />
@@ -136,7 +297,7 @@ export default function Estadisticas() {
           </Card>
         </Col>
 
-        {/* Bar: eventos por sector */}
+        {/* Bar */}
         <Col xs={24} lg={14}>
           <Card title="Eventos por Sector" style={{ borderRadius: 8 }}>
             {barData.length === 0 ? (

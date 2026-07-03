@@ -121,6 +121,29 @@ export class PanelTecnicoService {
     };
   }
 
+  async getEventosCriticos() {
+    const [prioridadAlta, prioridadMedia, pendiente, enProceso] = await Promise.all([
+      this.prisma.prioridad.findUnique({ where: { nombre: 'alta' } }),
+      this.prisma.prioridad.findUnique({ where: { nombre: 'media' } }),
+      this.prisma.estadoEvento.findUnique({ where: { nombre: 'pendiente' } }),
+      this.prisma.estadoEvento.findUnique({ where: { nombre: 'en_proceso' } }),
+    ]);
+
+    return this.prisma.evento.findMany({
+      where: {
+        prioridadId: { in: [prioridadAlta!.id, prioridadMedia!.id] },
+        estadoId: { in: [pendiente!.id, enProceso!.id] },
+      },
+      include: {
+        usuario: { select: { id: true, nombre: true, apellido: true } },
+        desague: { select: { sector: { select: { nombre: true } } } },
+        prioridad: { select: { nombre: true } },
+        estado: { select: { nombre: true } },
+      },
+      orderBy: { fechaEvento: 'asc' },
+    });
+  }
+
   async getSectoresCriticos() {
     const estadoPendiente = await this.prisma.estadoEvento.findUnique({ where: { nombre: 'pendiente' } });
 

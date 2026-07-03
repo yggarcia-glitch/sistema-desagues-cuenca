@@ -30,6 +30,11 @@ export async function getSectoresCriticos() {
   return res.data;
 }
 
+export async function getEventosCriticos() {
+  const res = await api.get('/panel/eventos/criticos');
+  return res.data;
+}
+
 export async function getUsuarios() {
   const res = await api.get('/usuarios');
   return res.data;
