@@ -110,9 +110,57 @@ export class MailService {
     return true;
   }
 
+  /**
+   * Envia via Brevo (API HTTP). Funciona en Render y permite mandar a cualquier
+   * destinatario verificando solo un correo remitente (sin dominio propio).
+   * Devuelve true si se encargo del envio (haya salido bien o mal).
+   */
+  private async enviarPorBrevo(
+    to: string,
+    subject: string,
+    html: string,
+    adjuntoPath?: string | null,
+  ): Promise<boolean> {
+    const apiKey = process.env.BREVO_API_KEY;
+    if (!apiKey) return false;
+
+    const senderEmail = process.env.BREVO_FROM_EMAIL ?? process.env.SMTP_USER ?? '';
+    const senderName = process.env.BREVO_FROM_NAME ?? 'Desagües Cuenca';
+    const adjunto = this.resolverAdjunto(adjuntoPath);
+    const body: Record<string, unknown> = {
+      sender: { name: senderName, email: senderEmail },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    };
+    if (adjunto) {
+      body.attachment = [
+        { name: adjunto.filename, content: readFileSync(adjunto.abs).toString('base64') },
+      ];
+    }
+
+    try {
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': apiKey, 'Content-Type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        this.logger.log(`Correo enviado (Brevo) a ${to}: ${subject}`);
+      } else {
+        const detalle = await res.text();
+        this.logger.error(`Brevo rechazo el correo a ${to}: ${res.status} ${detalle}`);
+      }
+    } catch (err) {
+      this.logger.error(`Error llamando a Brevo para ${to}: ${(err as Error).message}`);
+    }
+    return true;
+  }
+
   /** Envia un correo sin bloquear ni romper la peticion si algo falla. */
   private async enviar(to: string, subject: string, html: string, adjuntoPath?: string | null) {
-    // Preferir Resend (HTTP) si esta configurado: es lo que funciona en Render.
+    // Proveedores HTTP (funcionan en Render, que bloquea el SMTP).
+    if (await this.enviarPorBrevo(to, subject, html, adjuntoPath)) return;
     if (await this.enviarPorResend(to, subject, html, adjuntoPath)) return;
 
     const transporter = await this.getTransporter();
