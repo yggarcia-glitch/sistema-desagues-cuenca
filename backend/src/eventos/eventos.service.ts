@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { CreateEventoDto } from './dto/create-evento.dto';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
 
@@ -24,7 +25,10 @@ const INCLUDE_EVENTO = {
 
 @Injectable()
 export class EventosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {}
 
   private async resolverDesague(lat: number, lng: number): Promise<number> {
     const desagues = await this.prisma.desague.findMany({
@@ -92,7 +96,7 @@ export class EventosService {
 
     const desagueId = await this.resolverDesague(dto.latitud, dto.longitud);
 
-    return this.prisma.evento.create({
+    const evento = await this.prisma.evento.create({
       data: {
         usuarioId,
         desagueId,
@@ -104,6 +108,21 @@ export class EventosService {
       },
       include: INCLUDE_EVENTO,
     });
+
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: { correo: true, nombre: true },
+    });
+    if (usuario) {
+      void this.mail.reporteCreado({
+        correo: usuario.correo,
+        nombre: usuario.nombre,
+        eventoId: evento.id,
+        descripcion: evento.descripcion,
+      });
+    }
+
+    return evento;
   }
 
   findAll() {
@@ -148,8 +167,8 @@ export class EventosService {
     const nuevoEstado = await this.prisma.estadoEvento.findUnique({ where: { nombre: dto.estado } });
     if (!nuevoEstado) throw new BadRequestException(`Estado '${dto.estado}' no existe`);
 
-    return this.prisma.$transaction(async (tx) => {
-      const eventoActualizado = await tx.evento.update({
+    const eventoActualizado = await this.prisma.$transaction(async (tx) => {
+      const actualizado = await tx.evento.update({
         where: { id },
         data: { estadoId: nuevoEstado.id },
         include: INCLUDE_EVENTO,
@@ -164,7 +183,40 @@ export class EventosService {
         },
       });
 
-      return eventoActualizado;
+      return actualizado;
     });
+
+    await this.notificarCambioEstado(id, dto.estado);
+
+    return eventoActualizado;
+  }
+
+  private async notificarCambioEstado(eventoId: number, estado: string) {
+    if (estado !== 'en_proceso' && estado !== 'resuelto') return;
+
+    const evento = await this.prisma.evento.findUnique({
+      where: { id: eventoId },
+      select: {
+        id: true,
+        descripcion: true,
+        usuario: { select: { correo: true, nombre: true } },
+        fotos: { orderBy: { fechaCaptura: 'desc' }, take: 1, select: { urlImagen: true } },
+      },
+    });
+    if (!evento?.usuario) return;
+
+    const base = {
+      correo: evento.usuario.correo,
+      nombre: evento.usuario.nombre,
+      eventoId: evento.id,
+      descripcion: evento.descripcion,
+    };
+
+    if (estado === 'en_proceso') {
+      void this.mail.reparacionIniciada(base);
+    } else {
+      // Foto de evidencia opcional por ahora (a futuro sera obligatoria)
+      void this.mail.reporteResuelto({ ...base, fotoPath: evento.fotos[0]?.urlImagen ?? null });
+    }
   }
 }

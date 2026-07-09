@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Card, Row, Col, Statistic, Tag, Typography, Spin, Space, Grid } from 'antd';
 
 const { useBreakpoint } = Grid;
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
 import { getEventosMapa } from '../../api/panel';
 import type { EventoMapa } from '../../types';
 
@@ -21,6 +22,24 @@ const ESTADO_LABEL: Record<string, string> = {
   en_proceso: 'En Proceso',
   resuelto: 'Resuelto',
 };
+
+// Pin tipo gota bien contrastado para que resalte sobre los iconos del mapa base.
+const pinCache: Record<string, L.DivIcon> = {};
+function pinDesague(color: string): L.DivIcon {
+  if (pinCache[color]) return pinCache[color];
+  const icon = L.divIcon({
+    className: 'pin-desague',
+    html: `<div style="position:relative;width:30px;height:42px;">
+      <div style="position:absolute;top:0;left:2px;width:26px;height:26px;background:${color};border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 6px rgba(0,0,0,.45);"></div>
+      <div style="position:absolute;top:8px;left:11px;width:8px;height:8px;background:#fff;border-radius:50%;"></div>
+    </div>`,
+    iconSize: [30, 42],
+    iconAnchor: [15, 40],
+    popupAnchor: [0, -36],
+  });
+  pinCache[color] = icon;
+  return icon;
+}
 
 export default function Dashboard() {
   const [eventos, setEventos] = useState<EventoMapa[]>([]);
@@ -97,14 +116,10 @@ export default function Dashboard() {
               {eventos
                 .filter((e) => e.latitud && e.longitud)
                 .map((e) => (
-                  <CircleMarker
+                  <Marker
                     key={e.id}
-                    center={[e.latitud, e.longitud]}
-                    radius={10}
-                    fillColor={PRIORIDAD_COLOR[e.prioridad?.nombre] ?? '#666'}
-                    color="#fff"
-                    weight={2}
-                    fillOpacity={0.85}
+                    position={[e.latitud, e.longitud]}
+                    icon={pinDesague(PRIORIDAD_COLOR[e.prioridad?.nombre] ?? '#666')}
                   >
                     <Popup>
                       <div style={{ minWidth: 180 }}>
@@ -135,7 +150,7 @@ export default function Dashboard() {
                         <Text style={{ fontSize: 12 }}>{e.descripcion}</Text>
                       </div>
                     </Popup>
-                  </CircleMarker>
+                  </Marker>
                 ))}
             </MapContainer>
           </div>

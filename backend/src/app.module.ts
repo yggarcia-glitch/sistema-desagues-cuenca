@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
+import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
 import { EventosModule } from './eventos/eventos.module';
 import { FotosEvidenciaModule } from './fotos-evidencia/fotos-evidencia.module';
@@ -13,6 +14,7 @@ import { HistorialEstadosModule } from './historial-estados/historial-estados.mo
 @Module({
   imports: [
     PrismaModule,
+    MailModule,
     AuthModule,
     EventosModule,
     FotosEvidenciaModule,
