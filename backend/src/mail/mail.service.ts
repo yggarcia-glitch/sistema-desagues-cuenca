@@ -16,34 +16,56 @@ interface DatosCorreo {
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private transporter: nodemailer.Transporter | null = null;
-  private inicializado = false;
+  private transporterPromise: Promise<nodemailer.Transporter | null> | null = null;
+  private usandoCuentaPrueba = false;
 
-  private getTransporter(): nodemailer.Transporter | null {
-    if (this.inicializado) return this.transporter;
-    this.inicializado = true;
+  private getTransporter(): Promise<nodemailer.Transporter | null> {
+    if (this.transporterPromise) return this.transporterPromise;
+    this.transporterPromise = this.crearTransporter();
+    return this.transporterPromise;
+  }
 
+  private async crearTransporter(): Promise<nodemailer.Transporter | null> {
     const host = process.env.SMTP_HOST;
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
 
-    if (!host || !user || !pass) {
-      this.logger.warn('SMTP no configurado (SMTP_HOST/SMTP_USER/SMTP_PASS). No se enviaran correos.');
-      return null;
+    // SMTP real configurado (Gmail, etc.): entrega a bandejas reales.
+    if (host && user && pass) {
+      this.logger.log(`SMTP real configurado (${host}). Los correos se entregaran a bandejas reales.`);
+      return nodemailer.createTransport({
+        host,
+        port: Number(process.env.SMTP_PORT ?? 587),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: { user, pass },
+      });
     }
 
-    this.transporter = nodemailer.createTransport({
-      host,
-      port: Number(process.env.SMTP_PORT ?? 587),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user, pass },
-    });
-    return this.transporter;
+    // Sin SMTP real: buzon de prueba Ethereal. Los correos NO llegan a la
+    // bandeja del ciudadano, pero se envian de verdad y se genera un link de
+    // vista previa en la consola para verlos (util para demo/desarrollo).
+    try {
+      const cuenta = await nodemailer.createTestAccount();
+      this.usandoCuentaPrueba = true;
+      this.logger.warn(
+        `SMTP real no configurado: usando cuenta de prueba Ethereal (${cuenta.user}). ` +
+          'Cada correo tendra un link de vista previa en la consola.',
+      );
+      return nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: { user: cuenta.user, pass: cuenta.pass },
+      });
+    } catch (err) {
+      this.logger.error(`No se pudo crear la cuenta de correo de prueba: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   /** Envia un correo sin bloquear ni romper la peticion si algo falla. */
   private async enviar(to: string, subject: string, html: string, adjuntoPath?: string | null) {
-    const transporter = this.getTransporter();
+    const transporter = await this.getTransporter();
     if (!transporter) return;
 
     const attachments: nodemailer.SendMailOptions['attachments'] = [];
@@ -55,14 +77,18 @@ export class MailService {
     }
 
     try {
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM ?? `Desagues Cuenca <${process.env.SMTP_USER}>`,
+      const info = await transporter.sendMail({
+        from: process.env.SMTP_FROM ?? `Desagues Cuenca <${process.env.SMTP_USER ?? 'no-reply@desagues-cuenca.ec'}>`,
         to,
         subject,
         html,
         attachments,
       });
       this.logger.log(`Correo enviado a ${to}: ${subject}`);
+      if (this.usandoCuentaPrueba) {
+        const preview = nodemailer.getTestMessageUrl(info);
+        if (preview) this.logger.log(`Vista previa del correo: ${preview}`);
+      }
     } catch (err) {
       this.logger.error(`No se pudo enviar el correo a ${to}: ${(err as Error).message}`);
     }
