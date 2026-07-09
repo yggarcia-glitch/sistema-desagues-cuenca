@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import * as nodemailer from 'nodemailer';
 
@@ -63,8 +63,58 @@ export class MailService {
     }
   }
 
+  private resolverAdjunto(adjuntoPath?: string | null): { filename: string; abs: string } | null {
+    if (!adjuntoPath) return null;
+    const abs = join(process.cwd(), adjuntoPath);
+    if (!existsSync(abs)) return null;
+    return { filename: 'evidencia' + (abs.match(/\.\w+$/)?.[0] ?? '.jpg'), abs };
+  }
+
+  /**
+   * Envia via Resend (API HTTP). Funciona en Render (que bloquea el SMTP).
+   * Devuelve true si se encargo del envio (haya salido bien o mal).
+   */
+  private async enviarPorResend(
+    to: string,
+    subject: string,
+    html: string,
+    adjuntoPath?: string | null,
+  ): Promise<boolean> {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) return false;
+
+    const from = process.env.RESEND_FROM ?? 'Desagües Cuenca <onboarding@resend.dev>';
+    const adjunto = this.resolverAdjunto(adjuntoPath);
+    const body: Record<string, unknown> = { from, to, subject, html };
+    if (adjunto) {
+      body.attachments = [
+        { filename: adjunto.filename, content: readFileSync(adjunto.abs).toString('base64') },
+      ];
+    }
+
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        this.logger.log(`Correo enviado (Resend) a ${to}: ${subject}`);
+      } else {
+        const detalle = await res.text();
+        this.logger.error(`Resend rechazo el correo a ${to}: ${res.status} ${detalle}`);
+      }
+    } catch (err) {
+      this.logger.error(`Error llamando a Resend para ${to}: ${(err as Error).message}`);
+    }
+    return true;
+  }
+
   /** Envia un correo sin bloquear ni romper la peticion si algo falla. */
   private async enviar(to: string, subject: string, html: string, adjuntoPath?: string | null) {
+    // Preferir Resend (HTTP) si esta configurado: es lo que funciona en Render.
+    if (await this.enviarPorResend(to, subject, html, adjuntoPath)) return;
+
     const transporter = await this.getTransporter();
     if (!transporter) return;
 
