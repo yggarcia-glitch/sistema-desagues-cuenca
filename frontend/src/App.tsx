@@ -6,9 +6,12 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from './components/AppLayout';
 import CrearEvento from './pages/ciudadano/CrearEvento';
 import MisReportes from './pages/ciudadano/MisReportes';
+import DesaguesCercanos from './pages/ciudadano/DesaguesCercanos';
 import Dashboard from './pages/tecnico/Dashboard';
 import ListaEventos from './pages/tecnico/ListaEventos';
 import SectoresCriticos from './pages/tecnico/SectoresCriticos';
+import RankingSectores from './pages/tecnico/RankingSectores';
+import HistorialDesagues from './pages/tecnico/HistorialDesagues';
 import Estadisticas from './pages/admin/Estadisticas';
 import GestionUsuarios from './pages/admin/GestionUsuarios';
 
@@ -39,6 +42,7 @@ export default function App() {
       >
         <Route path="crear-evento" element={<CrearEvento />} />
         <Route path="mis-reportes" element={<MisReportes />} />
+        <Route path="desagues-cercanos" element={<DesaguesCercanos />} />
         <Route index element={<Navigate to="mis-reportes" replace />} />
       </Route>
 
@@ -54,6 +58,8 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="eventos" element={<ListaEventos />} />
         <Route path="sectores" element={<SectoresCriticos />} />
+        <Route path="ranking" element={<RankingSectores />} />
+        <Route path="historial-desagues" element={<HistorialDesagues />} />
         <Route index element={<Navigate to="dashboard" replace />} />
       </Route>
 
@@ -70,6 +76,8 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="eventos" element={<ListaEventos />} />
         <Route path="sectores" element={<SectoresCriticos />} />
+        <Route path="ranking" element={<RankingSectores />} />
+        <Route path="historial-desagues" element={<HistorialDesagues />} />
         <Route path="usuarios" element={<GestionUsuarios />} />
         <Route index element={<Navigate to="estadisticas" replace />} />
       </Route>

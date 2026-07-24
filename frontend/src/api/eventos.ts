@@ -27,6 +27,21 @@ export async function updateEstado(id: number, estado: string) {
   return res.data;
 }
 
+export interface ResolverExtra {
+  codigoDesague?: string;
+  nombreDesague?: string;
+}
+
+// Marca un evento como resuelto. La foto de la alcantarilla limpia es obligatoria.
+export async function resolverEvento(id: number, foto: File, extra?: ResolverExtra) {
+  const formData = new FormData();
+  formData.append('foto', foto);
+  if (extra?.codigoDesague) formData.append('codigoDesague', extra.codigoDesague);
+  if (extra?.nombreDesague) formData.append('nombreDesague', extra.nombreDesague);
+  const res = await api.patch(`/eventos/${id}/resolver`, formData);
+  return res.data;
+}
+
 export async function subirFoto(eventoId: number, foto: File) {
   const formData = new FormData();
   formData.append('foto', foto);
@@ -37,5 +52,11 @@ export async function subirFoto(eventoId: number, foto: File) {
 
 export async function getDesagues() {
   const res = await api.get('/desagues');
+  return res.data;
+}
+
+// US-14: desagües dentro de un radio (metros) desde una ubicación.
+export async function getDesaguesCercanos(lat: number, lng: number, radio: number) {
+  const res = await api.get('/desagues/cercanos', { params: { lat, lng, radio } });
   return res.data;
 }

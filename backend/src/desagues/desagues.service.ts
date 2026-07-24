@@ -8,6 +8,16 @@ const INCLUDE_DESAGUE = {
   sector: { select: { id: true, nombre: true } },
 };
 
+function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 @Injectable()
 export class DesaguesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -34,6 +44,20 @@ export class DesaguesService {
       include: INCLUDE_DESAGUE,
       orderBy: { id: 'asc' },
     });
+  }
+
+  // US-14: desagües dentro de un radio (metros) desde una ubicación dada,
+  // ordenados del más cercano al más lejano.
+  async findCercanos(lat: number, lng: number, radio: number) {
+    const desagues = await this.prisma.desague.findMany({ include: INCLUDE_DESAGUE });
+
+    return desagues
+      .map((d) => ({
+        ...d,
+        distancia: Math.round(distanciaMetros(lat, lng, Number(d.latitud), Number(d.longitud))),
+      }))
+      .filter((d) => d.distancia <= radio)
+      .sort((a, b) => a.distancia - b.distancia);
   }
 
   async findOne(id: number) {

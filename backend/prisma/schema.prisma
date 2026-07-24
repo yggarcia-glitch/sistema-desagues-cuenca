@@ -86,6 +86,7 @@ model Usuario {
 model Desague {
   id            Int      @id @default(autoincrement())
   codigo        String   @db.VarChar(30)
+  nombre        String?  @db.VarChar(100)
   latitud       Decimal  @db.Decimal(10, 7)
   longitud      Decimal  @db.Decimal(10, 7)
   direccion     String   @db.VarChar(200)

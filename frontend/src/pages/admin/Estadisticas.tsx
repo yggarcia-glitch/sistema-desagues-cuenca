@@ -1,19 +1,22 @@
 import { useState, useEffect } from 'react';
 import {
   Card, Row, Col, Statistic, Typography, Spin, Space, Table, Tag, Progress, Badge,
+  DatePicker, Button, App,
 } from 'antd';
 import {
-  ClockCircleOutlined, BarChartOutlined, WarningOutlined,
+  ClockCircleOutlined, BarChartOutlined, WarningOutlined, DownloadOutlined,
 } from '@ant-design/icons';
+import type { Dayjs } from 'dayjs';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   PieChart, Pie, Cell, ResponsiveContainer,
 } from 'recharts';
-import { getEstadisticas, getEventosCriticos } from '../../api/panel';
+import { getEstadisticas, getEventosCriticos, exportarReportesCsv } from '../../api/panel';
 import type { Estadisticas } from '../../types';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
 const PRIMARY = '#1B5E20';
 
 const ESTADO_COLORS: Record<string, string> = {
@@ -64,6 +67,23 @@ export default function Estadisticas() {
   const [stats, setStats] = useState<Estadisticas | null>(null);
   const [criticos, setCriticos] = useState<EventoCritico[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rango, setRango] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [exportando, setExportando] = useState(false);
+  const { message } = App.useApp();
+
+  async function handleExportCsv() {
+    setExportando(true);
+    try {
+      const desde = rango?.[0]?.format('YYYY-MM-DD');
+      const hasta = rango?.[1]?.format('YYYY-MM-DD');
+      await exportarReportesCsv(desde, hasta);
+      message.success('CSV generado. Revisa tus descargas.');
+    } catch {
+      message.error('No se pudo generar el CSV.');
+    } finally {
+      setExportando(false);
+    }
+  }
 
   useEffect(() => {
     Promise.all([getEstadisticas(), getEventosCriticos()])
@@ -189,6 +209,35 @@ export default function Estadisticas() {
       <Title level={3} style={{ color: PRIMARY, marginBottom: 20 }}>
         <BarChartOutlined /> Estadísticas Globales
       </Title>
+
+      {/* US-15: exportación CSV del histórico */}
+      <Card style={{ marginBottom: 24, borderRadius: 8 }} styles={{ body: { padding: 16 } }}>
+        <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Space direction="vertical" size={0}>
+            <Text strong>Exportar histórico de incidencias (CSV)</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Para integrarlo con modelos hidrológicos de planificación. Filtra por rango de fechas (opcional).
+            </Text>
+          </Space>
+          <Space wrap>
+            <RangePicker
+              value={rango as any}
+              onChange={(v) => setRango(v as [Dayjs | null, Dayjs | null] | null)}
+              format="DD/MM/YYYY"
+              allowEmpty={[true, true]}
+            />
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              loading={exportando}
+              onClick={handleExportCsv}
+              style={{ background: PRIMARY, borderColor: PRIMARY }}
+            >
+              Descargar CSV
+            </Button>
+          </Space>
+        </Space>
+      </Card>
 
       {/* KPIs */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

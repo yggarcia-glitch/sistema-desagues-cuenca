@@ -1,6 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { FiltrosEventosDto } from './dto/filtros-eventos.dto';
+
+// Escapa un valor para incluirlo de forma segura en una celda CSV.
+function csvCell(value: unknown): string {
+  const str = value === null || value === undefined ? '' : String(value);
+  if (/[",\n;]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+  return str;
+}
 
 @Injectable()
 export class PanelTecnicoService {
@@ -27,7 +34,7 @@ export class PanelTecnicoService {
         usuario: { select: { id: true, nombre: true, apellido: true } },
         desague: {
           select: {
-            id: true, codigo: true, direccion: true,
+            id: true, codigo: true, nombre: true, direccion: true, verificado: true,
             tipoDesague: { select: { nombre: true } },
             sector: { select: { id: true, nombre: true } },
           },
@@ -50,7 +57,16 @@ export class PanelTecnicoService {
         estado: { select: { nombre: true } },
         prioridad: { select: { nombre: true } },
         descripcion: true,
-        desague: { select: { sector: { select: { nombre: true } } } },
+        fotos: { select: { urlImagen: true } },
+        desague: {
+          select: {
+            id: true,
+            codigo: true,
+            nombre: true,
+            verificado: true,
+            sector: { select: { nombre: true } },
+          },
+        },
       },
     });
   }
@@ -180,5 +196,203 @@ export class PanelTecnicoService {
     }
 
     return [...mapa.values()].sort((a, b) => b.eventosPendientes - a.eventosPendientes);
+  }
+
+  // US-18: ranking de sectores por reportes resueltos y % de efectividad.
+  async getRankingSectores() {
+    const eventos = await this.prisma.evento.findMany({
+      select: {
+        estado: { select: { nombre: true } },
+        desague: { select: { sector: { select: { id: true, nombre: true } } } },
+      },
+    });
+
+    const mapa = new Map<
+      number,
+      { sectorId: number; nombre: string; total: number; resueltos: number; pendientes: number; enProceso: number }
+    >();
+
+    for (const e of eventos) {
+      const sector = e.desague?.sector;
+      if (!sector) continue;
+      if (!mapa.has(sector.id)) {
+        mapa.set(sector.id, {
+          sectorId: sector.id,
+          nombre: sector.nombre,
+          total: 0,
+          resueltos: 0,
+          pendientes: 0,
+          enProceso: 0,
+        });
+      }
+      const acc = mapa.get(sector.id)!;
+      acc.total += 1;
+      if (e.estado.nombre === 'resuelto') acc.resueltos += 1;
+      else if (e.estado.nombre === 'en_proceso') acc.enProceso += 1;
+      else if (e.estado.nombre === 'pendiente') acc.pendientes += 1;
+    }
+
+    return [...mapa.values()]
+      .map((s) => ({
+        ...s,
+        efectividad: s.total > 0 ? Math.round((s.resueltos / s.total) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.resueltos - a.resueltos || b.efectividad - a.efectividad);
+  }
+
+  // US-13: lista de desagües con su recuento de reportes (para elegir uno).
+  async getDesaguesConHistorial() {
+    const desagues = await this.prisma.desague.findMany({
+      select: {
+        id: true,
+        codigo: true,
+        nombre: true,
+        direccion: true,
+        verificado: true,
+        sector: { select: { nombre: true } },
+        eventos: {
+          select: { fechaEvento: true, estado: { select: { nombre: true } } },
+          orderBy: { fechaEvento: 'desc' },
+        },
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    return desagues
+      .map((d) => {
+        const total = d.eventos.length;
+        const resueltos = d.eventos.filter((e) => e.estado.nombre === 'resuelto').length;
+        return {
+          id: d.id,
+          codigo: d.codigo,
+          nombre: d.nombre,
+          direccion: d.direccion,
+          verificado: d.verificado,
+          sector: d.sector?.nombre ?? null,
+          totalReportes: total,
+          resueltos,
+          recurrente: total >= 3,
+          ultimoReporte: d.eventos[0]?.fechaEvento ?? null,
+        };
+      })
+      .sort((a, b) => b.totalReportes - a.totalReportes);
+  }
+
+  // US-13: historial cronológico completo de un desagüe + indicador de frecuencia.
+  async getHistorialDesague(id: number) {
+    const desague = await this.prisma.desague.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        codigo: true,
+        nombre: true,
+        direccion: true,
+        verificado: true,
+        latitud: true,
+        longitud: true,
+        sector: { select: { id: true, nombre: true } },
+        tipoDesague: { select: { nombre: true } },
+      },
+    });
+    if (!desague) throw new NotFoundException(`Desagüe #${id} no encontrado`);
+
+    const reportes = await this.prisma.evento.findMany({
+      where: { desagueId: id },
+      select: {
+        id: true,
+        descripcion: true,
+        fechaEvento: true,
+        usuario: { select: { nombre: true, apellido: true } },
+        prioridad: { select: { nombre: true } },
+        estado: { select: { nombre: true } },
+      },
+      orderBy: { fechaEvento: 'desc' },
+    });
+
+    const total = reportes.length;
+    const resueltos = reportes.filter((r) => r.estado.nombre === 'resuelto').length;
+
+    // Frecuencia media de obstrucción (reportes por mes) desde el primer reporte.
+    let frecuenciaMensual = 0;
+    if (total >= 2) {
+      const fechas = reportes.map((r) => new Date(r.fechaEvento).getTime());
+      const meses = (Math.max(...fechas) - Math.min(...fechas)) / (1000 * 60 * 60 * 24 * 30);
+      frecuenciaMensual = meses > 0 ? Math.round((total / meses) * 10) / 10 : total;
+    }
+
+    return {
+      desague: {
+        ...desague,
+        latitud: Number(desague.latitud),
+        longitud: Number(desague.longitud),
+      },
+      totalReportes: total,
+      resueltos,
+      recurrente: total >= 3,
+      frecuenciaMensual,
+      reportes,
+    };
+  }
+
+  // US-15: reporte histórico de incidencias en CSV (con filtro opcional de fechas).
+  async exportarCsv(desde?: string, hasta?: string): Promise<string> {
+    const where: any = {};
+    if (desde || hasta) {
+      where.fechaEvento = {};
+      if (desde) where.fechaEvento.gte = new Date(desde);
+      if (hasta) {
+        // 'hasta' inclusivo hasta el final del día.
+        const fin = new Date(hasta);
+        fin.setHours(23, 59, 59, 999);
+        where.fechaEvento.lte = fin;
+      }
+    }
+
+    const eventos = await this.prisma.evento.findMany({
+      where,
+      include: {
+        desague: { select: { codigo: true, sector: { select: { nombre: true } } } },
+        prioridad: { select: { nombre: true } },
+        estado: { select: { nombre: true } },
+        orden: {
+          select: {
+            resultado: { select: { nombre: true } },
+            tecnico: { select: { nombre: true, apellido: true } },
+          },
+        },
+      },
+      orderBy: { fechaEvento: 'asc' },
+    });
+
+    const headers = [
+      'ID',
+      'Fecha',
+      'Latitud',
+      'Longitud',
+      'Sector',
+      'Codigo_Desague',
+      'Prioridad',
+      'Estado',
+      'Responsable',
+    ];
+
+    const filas = eventos.map((e) =>
+      [
+        e.id,
+        new Date(e.fechaEvento).toISOString(),
+        Number(e.latitud),
+        Number(e.longitud),
+        e.desague?.sector?.nombre ?? '',
+        e.desague?.codigo ?? '',
+        e.prioridad.nombre,
+        e.estado.nombre,
+        e.orden?.tecnico ? `${e.orden.tecnico.nombre} ${e.orden.tecnico.apellido}` : '',
+      ]
+        .map(csvCell)
+        .join(','),
+    );
+
+    // BOM para que Excel abra los acentos correctamente.
+    return '﻿' + [headers.join(','), ...filas].join('\r\n');
   }
 }

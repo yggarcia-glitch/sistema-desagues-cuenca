@@ -8,6 +8,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import type { UploadFile } from 'antd';
 import { crearEvento, subirFoto } from '../../api/eventos';
+import { encolarReporte } from '../../offline/offlineReports';
 
 const { useBreakpoint } = Grid;
 const { Title, Text } = Typography;
@@ -81,14 +82,31 @@ export default function CrearEvento() {
       return;
     }
     setPrioridadError(false);
+
+    const payload = {
+      descripcion: values.descripcion ?? '',
+      latitud: ubicacion.lat,
+      longitud: ubicacion.lng,
+      prioridad,
+    };
+
+    // US-16: sin conexión → se guarda localmente y se sincroniza después.
+    if (!navigator.onLine) {
+      encolarReporte(payload);
+      message.warning('Sin conexión: tu reporte se guardó y se enviará automáticamente al recuperar la señal.');
+      if (fileList.length > 0) {
+        message.info('La foto no se guarda offline; podrás adjuntarla desde "Mis Reportes" cuando se sincronice.');
+      }
+      form.resetFields();
+      setUbicacion(null);
+      setPrioridad(null);
+      setFileList([]);
+      return;
+    }
+
     setLoading(true);
     try {
-      const evento = await crearEvento({
-        descripcion: values.descripcion ?? '',
-        latitud: ubicacion.lat,
-        longitud: ubicacion.lng,
-        prioridad,
-      });
+      const evento = await crearEvento(payload);
 
       if (fileList.length > 0 && fileList[0].originFileObj) {
         try {
@@ -107,7 +125,17 @@ export default function CrearEvento() {
       setFileList([]);
       setTimeout(() => setSubmitted(false), 5000);
     } catch (e: any) {
-      message.error(e.response?.data?.message ?? 'Error al enviar el reporte. Intenta de nuevo.');
+      // Sin respuesta del servidor → probablemente caída de red: se encola.
+      if (!e.response) {
+        encolarReporte(payload);
+        message.warning('No se pudo conectar: tu reporte se guardó y se enviará automáticamente cuando haya conexión.');
+        form.resetFields();
+        setUbicacion(null);
+        setPrioridad(null);
+        setFileList([]);
+      } else {
+        message.error(e.response?.data?.message ?? 'Error al enviar el reporte. Intenta de nuevo.');
+      }
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -7,14 +8,19 @@ import {
   Patch,
   Post,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
+import { multerFotoConfig } from '../common/upload.config';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CreateEventoDto } from './dto/create-evento.dto';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
+import { ResolverEventoDto } from './dto/resolver-evento.dto';
 import { EventosService } from './eventos.service';
 
 @Controller('eventos')
@@ -57,5 +63,20 @@ export class EventosController {
     @Req() req: Request & { user: { id: number } },
   ) {
     return this.eventosService.updateEstado(id, dto, req.user.id);
+  }
+
+  @Patch(':id/resolver')
+  @Roles('tecnico', 'admin')
+  @UseInterceptors(FileInterceptor('foto', multerFotoConfig))
+  resolver(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: ResolverEventoDto,
+    @Req() req: Request & { user: { id: number } },
+  ) {
+    if (!file) {
+      throw new BadRequestException('Es obligatorio adjuntar una foto de la alcantarilla limpia');
+    }
+    return this.eventosService.resolver(id, `uploads/${file.filename}`, dto, req.user.id);
   }
 }

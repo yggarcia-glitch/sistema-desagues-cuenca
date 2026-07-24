@@ -1,10 +1,16 @@
-import { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Tag, Typography, Spin, Space, Grid } from 'antd';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  Card, Row, Col, Statistic, Tag, Typography, Spin, Space, Grid,
+  Button, Modal, Segmented, Upload, Input, Alert, App,
+} from 'antd';
+import { UploadOutlined, SyncOutlined } from '@ant-design/icons';
+import type { UploadFile } from 'antd';
 
 const { useBreakpoint } = Grid;
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { getEventosMapa } from '../../api/panel';
+import { updateEstado, resolverEvento } from '../../api/eventos';
 import type { EventoMapa } from '../../types';
 
 const { Title, Text } = Typography;
@@ -46,13 +52,61 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const screens = useBreakpoint();
   const mapHeight = screens.md ? 520 : 320;
+  const { message } = App.useApp();
 
-  useEffect(() => {
+  // --- Estado del modal de gestion ---
+  const [modalEvento, setModalEvento] = useState<EventoMapa | null>(null);
+  const [nuevoEstado, setNuevoEstado] = useState<string>('pendiente');
+  const [foto, setFoto] = useState<UploadFile | null>(null);
+  const [codigoDesague, setCodigoDesague] = useState('');
+  const [nombreDesague, setNombreDesague] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const cargar = useCallback(() => {
+    setLoading(true);
     getEventosMapa()
       .then(setEventos)
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  function abrirModal(e: EventoMapa) {
+    setModalEvento(e);
+    setNuevoEstado(e.estado?.nombre ?? 'pendiente');
+    setFoto(null);
+    setCodigoDesague('');
+    setNombreDesague('');
+  }
+
+  async function guardar() {
+    if (!modalEvento) return;
+    setSaving(true);
+    try {
+      if (nuevoEstado === 'resuelto') {
+        const file = foto?.originFileObj as File | undefined;
+        if (!file) {
+          message.warning('Debes adjuntar una foto de la alcantarilla limpia para resolver.');
+          setSaving(false);
+          return;
+        }
+        await resolverEvento(modalEvento.id, file, {
+          codigoDesague: codigoDesague.trim() || undefined,
+          nombreDesague: nombreDesague.trim() || undefined,
+        });
+      } else {
+        await updateEstado(modalEvento.id, nuevoEstado);
+      }
+      message.success('Estado actualizado correctamente.');
+      setModalEvento(null);
+      cargar();
+    } catch (err: any) {
+      message.error(err?.response?.data?.message ?? 'No se pudo actualizar el estado.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const conteo = eventos.reduce(
     (acc, e) => {
@@ -62,6 +116,8 @@ export default function Dashboard() {
     },
     {} as Record<string, number>,
   );
+
+  const desagueYaRegistrado = !!modalEvento?.desague?.verificado;
 
   return (
     <div>
@@ -122,7 +178,7 @@ export default function Dashboard() {
                     icon={pinDesague(PRIORIDAD_COLOR[e.prioridad?.nombre] ?? '#666')}
                   >
                     <Popup>
-                      <div style={{ minWidth: 180 }}>
+                      <div style={{ minWidth: 190 }}>
                         <Text strong>Evento #{e.id}</Text>
                         <br />
                         <Tag
@@ -148,6 +204,17 @@ export default function Dashboard() {
                         )}
                         <br />
                         <Text style={{ fontSize: 12 }}>{e.descripcion}</Text>
+                        <div style={{ marginTop: 10 }}>
+                          <Button
+                            size="small"
+                            type="primary"
+                            icon={<SyncOutlined />}
+                            style={{ background: PRIMARY, borderColor: PRIMARY }}
+                            onClick={() => abrirModal(e)}
+                          >
+                            Cambiar estado
+                          </Button>
+                        </div>
                       </div>
                     </Popup>
                   </Marker>
@@ -156,6 +223,87 @@ export default function Dashboard() {
           </div>
         )}
       </Card>
+
+      <Modal
+        title={`Gestionar estado — Evento #${modalEvento?.id}`}
+        open={!!modalEvento}
+        onCancel={() => setModalEvento(null)}
+        onOk={guardar}
+        confirmLoading={saving}
+        okText={nuevoEstado === 'resuelto' ? 'Resolver' : 'Guardar'}
+        cancelText="Cancelar"
+        okButtonProps={{ style: { background: PRIMARY, borderColor: PRIMARY } }}
+      >
+        {modalEvento && (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Text type="secondary">{modalEvento.descripcion}</Text>
+
+            <div>
+              <Text strong style={{ display: 'block', marginBottom: 8 }}>Nuevo estado</Text>
+              <Segmented
+                block
+                value={nuevoEstado}
+                onChange={(v) => setNuevoEstado(v as string)}
+                options={[
+                  { label: 'Pendiente', value: 'pendiente' },
+                  { label: 'En Proceso', value: 'en_proceso' },
+                  { label: 'Resuelto', value: 'resuelto' },
+                ]}
+              />
+            </div>
+
+            {nuevoEstado === 'resuelto' && (
+              <>
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Para resolver es obligatorio adjuntar una foto de la alcantarilla limpia."
+                />
+                <div>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    Foto de la alcantarilla limpia *
+                  </Text>
+                  <Upload
+                    accept=".jpg,.jpeg,.png,.webp"
+                    maxCount={1}
+                    listType="picture"
+                    beforeUpload={() => false}
+                    fileList={foto ? [foto] : []}
+                    onChange={({ fileList }) => setFoto(fileList[0] ?? null)}
+                  >
+                    <Button icon={<UploadOutlined />}>Seleccionar foto</Button>
+                  </Upload>
+                </div>
+
+                {!desagueYaRegistrado && (
+                  <div>
+                    <Text strong style={{ display: 'block', marginBottom: 4 }}>
+                      Registrar alcantarilla (opcional)
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                      Si esta alcantarilla aún no está registrada, asígnale un código y un nombre.
+                    </Text>
+                    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                      <Input
+                        placeholder="Código / ID de la alcantarilla"
+                        value={codigoDesague}
+                        maxLength={30}
+                        onChange={(ev) => setCodigoDesague(ev.target.value)}
+                      />
+                      <Input
+                        placeholder="Nombre de la alcantarilla"
+                        value={nombreDesague}
+                        maxLength={100}
+                        onChange={(ev) => setNombreDesague(ev.target.value)}
+                      />
+                    </Space>
+                  </div>
+                )}
+              </>
+            )}
+          </Space>
+        )}
+      </Modal>
     </div>
   );
 }

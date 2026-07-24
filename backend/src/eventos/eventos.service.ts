@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { unlink } from 'fs/promises';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { CreateEventoDto } from './dto/create-evento.dto';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
+import { ResolverEventoDto } from './dto/resolver-evento.dto';
 
 const RADIO_METROS = 60;
 
@@ -18,7 +20,7 @@ function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number)
 
 const INCLUDE_EVENTO = {
   usuario: { select: { id: true, nombre: true, apellido: true } },
-  desague: { select: { id: true, codigo: true, direccion: true, verificado: true } },
+  desague: { select: { id: true, codigo: true, nombre: true, direccion: true, verificado: true } },
   prioridad: { select: { id: true, nombre: true } },
   estado: { select: { id: true, nombre: true } },
 };
@@ -164,6 +166,12 @@ export class EventosService {
     const evento = await this.prisma.evento.findUnique({ where: { id } });
     if (!evento) throw new NotFoundException(`Evento #${id} no encontrado`);
 
+    if (dto.estado === 'resuelto') {
+      throw new BadRequestException(
+        'Para marcar como resuelto usa la opcion de resolucion: es obligatorio adjuntar una foto de la alcantarilla limpia',
+      );
+    }
+
     const nuevoEstado = await this.prisma.estadoEvento.findUnique({ where: { nombre: dto.estado } });
     if (!nuevoEstado) throw new BadRequestException(`Estado '${dto.estado}' no existe`);
 
@@ -187,6 +195,65 @@ export class EventosService {
     });
 
     await this.notificarCambioEstado(id, dto.estado);
+
+    return eventoActualizado;
+  }
+
+  /**
+   * Marca un evento como resuelto. Requiere SI o SI una foto de la alcantarilla
+   * limpia (filePath ya guardado por Multer). Si se envian codigoDesague o
+   * nombreDesague, registra/actualiza la alcantarilla asociada (por si no
+   * existia formalmente en la base) y la marca como verificada.
+   */
+  async resolver(id: number, filePath: string, dto: ResolverEventoDto, usuarioId: number) {
+    const evento = await this.prisma.evento.findUnique({ where: { id } });
+    if (!evento) {
+      await unlink(filePath).catch(() => null);
+      throw new NotFoundException(`Evento #${id} no encontrado`);
+    }
+
+    const estadoResuelto = await this.prisma.estadoEvento.findUnique({ where: { nombre: 'resuelto' } });
+    if (!estadoResuelto) {
+      await unlink(filePath).catch(() => null);
+      throw new BadRequestException("El estado 'resuelto' no existe");
+    }
+
+    const eventoActualizado = await this.prisma.$transaction(async (tx) => {
+      // Foto de la alcantarilla limpia (evidencia obligatoria del trabajo).
+      await tx.fotoEvidencia.create({ data: { eventoId: id, urlImagen: filePath } });
+
+      // Registro opcional de la alcantarilla si el tecnico proporciono datos.
+      if (dto.codigoDesague || dto.nombreDesague) {
+        await tx.desague.update({
+          where: { id: evento.desagueId },
+          data: {
+            ...(dto.codigoDesague ? { codigo: dto.codigoDesague } : {}),
+            ...(dto.nombreDesague ? { nombre: dto.nombreDesague } : {}),
+            verificado: true,
+            fuenteDatos: 'tecnico',
+          },
+        });
+      }
+
+      const actualizado = await tx.evento.update({
+        where: { id },
+        data: { estadoId: estadoResuelto.id },
+        include: INCLUDE_EVENTO,
+      });
+
+      await tx.historialEstado.create({
+        data: {
+          eventoId: id,
+          estadoAnteriorId: evento.estadoId,
+          estadoNuevoId: estadoResuelto.id,
+          usuarioId,
+        },
+      });
+
+      return actualizado;
+    });
+
+    await this.notificarCambioEstado(id, 'resuelto');
 
     return eventoActualizado;
   }

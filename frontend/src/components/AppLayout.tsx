@@ -12,8 +12,12 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   AlertOutlined,
+  TrophyOutlined,
+  HistoryOutlined,
+  CompassOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
+import OfflineBanner from './OfflineBanner';
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -27,6 +31,7 @@ function getMenuItems(rol: string) {
     return [
       { key: '/ciudadano/crear-evento', icon: <FileAddOutlined />, label: 'Crear Reporte' },
       { key: '/ciudadano/mis-reportes', icon: <UnorderedListOutlined />, label: 'Mis Reportes' },
+      { key: '/ciudadano/desagues-cercanos', icon: <CompassOutlined />, label: 'Desagües Cercanos' },
     ];
   }
   if (rol === 'tecnico') {
@@ -34,6 +39,8 @@ function getMenuItems(rol: string) {
       { key: '/tecnico/dashboard', icon: <DashboardOutlined />, label: 'Mapa en Vivo' },
       { key: '/tecnico/eventos', icon: <UnorderedListOutlined />, label: 'Eventos' },
       { key: '/tecnico/sectores', icon: <AlertOutlined />, label: 'Sectores Críticos' },
+      { key: '/tecnico/ranking', icon: <TrophyOutlined />, label: 'Ranking Sectores' },
+      { key: '/tecnico/historial-desagues', icon: <HistoryOutlined />, label: 'Historial Desagües' },
     ];
   }
   return [
@@ -41,6 +48,8 @@ function getMenuItems(rol: string) {
     { key: '/admin/dashboard', icon: <DashboardOutlined />, label: 'Mapa en Vivo' },
     { key: '/admin/eventos', icon: <UnorderedListOutlined />, label: 'Eventos' },
     { key: '/admin/sectores', icon: <AlertOutlined />, label: 'Sectores Críticos' },
+    { key: '/admin/ranking', icon: <TrophyOutlined />, label: 'Ranking Sectores' },
+    { key: '/admin/historial-desagues', icon: <HistoryOutlined />, label: 'Historial Desagües' },
     { key: '/admin/usuarios', icon: <UserOutlined />, label: 'Usuarios' },
   ];
 }
@@ -195,6 +204,7 @@ export default function AppLayout() {
           background: '#f5f5f5',
           minHeight: `calc(100vh - ${64 + contentPadding * 2}px)`,
         }}>
+          <OfflineBanner />
           <Outlet />
         </Content>
       </Layout>

@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Tag, Typography, Select, Space, Button,
-  Modal, App, Row, Col, Avatar, Image,
+  Modal, App, Row, Col, Avatar, Image, Upload, Input, Alert,
 } from 'antd';
-import { SyncOutlined, FilterOutlined, EnvironmentOutlined } from '@ant-design/icons';
+import { SyncOutlined, FilterOutlined, EnvironmentOutlined, UploadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import type { UploadFile } from 'antd';
 import { getPanelEventos } from '../../api/panel';
-import { updateEstado } from '../../api/eventos';
+import { updateEstado, resolverEvento } from '../../api/eventos';
 import type { Evento } from '../../types';
 import type { FiltrosEventos } from '../../api/panel';
 
@@ -33,6 +34,9 @@ export default function ListaEventos() {
   const [modalEvento, setModalEvento] = useState<Evento | null>(null);
   const [nuevoEstado, setNuevoEstado] = useState('');
   const [savingEstado, setSavingEstado] = useState(false);
+  const [foto, setFoto] = useState<UploadFile | null>(null);
+  const [codigoDesague, setCodigoDesague] = useState('');
+  const [nombreDesague, setNombreDesague] = useState('');
   const { message } = App.useApp();
 
   const cargar = useCallback(async () => {
@@ -49,16 +53,37 @@ export default function ListaEventos() {
 
   useEffect(() => { cargar(); }, [cargar]);
 
+  function abrirModal(e: Evento) {
+    setModalEvento(e);
+    setNuevoEstado(e.estado?.nombre ?? 'pendiente');
+    setFoto(null);
+    setCodigoDesague('');
+    setNombreDesague('');
+  }
+
   async function cambiarEstado() {
     if (!modalEvento || !nuevoEstado) return;
     setSavingEstado(true);
     try {
-      await updateEstado(modalEvento.id, nuevoEstado);
+      if (nuevoEstado === 'resuelto') {
+        const file = foto?.originFileObj as File | undefined;
+        if (!file) {
+          message.warning('Debes adjuntar una foto de la alcantarilla limpia para resolver.');
+          setSavingEstado(false);
+          return;
+        }
+        await resolverEvento(modalEvento.id, file, {
+          codigoDesague: codigoDesague.trim() || undefined,
+          nombreDesague: nombreDesague.trim() || undefined,
+        });
+      } else {
+        await updateEstado(modalEvento.id, nuevoEstado);
+      }
       message.success('Estado actualizado correctamente.');
       setModalEvento(null);
       cargar();
-    } catch {
-      message.error('No se pudo actualizar el estado.');
+    } catch (err: any) {
+      message.error(err?.response?.data?.message ?? 'No se pudo actualizar el estado.');
     } finally {
       setSavingEstado(false);
     }
@@ -122,7 +147,7 @@ export default function ListaEventos() {
           type="primary"
           ghost
           icon={<SyncOutlined />}
-          onClick={() => { setModalEvento(r); setNuevoEstado(r.estado?.nombre ?? 'pendiente'); }}
+          onClick={() => abrirModal(r)}
         >
           Estado
         </Button>
@@ -239,6 +264,56 @@ export default function ListaEventos() {
                 { value: 'resuelto', label: 'Resuelto' },
               ]}
             />
+
+            {nuevoEstado === 'resuelto' && (
+              <>
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Para resolver es obligatorio adjuntar una foto de la alcantarilla limpia."
+                />
+                <div>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    Foto de la alcantarilla limpia *
+                  </Text>
+                  <Upload
+                    accept=".jpg,.jpeg,.png,.webp"
+                    maxCount={1}
+                    listType="picture"
+                    beforeUpload={() => false}
+                    fileList={foto ? [foto] : []}
+                    onChange={({ fileList }) => setFoto(fileList[0] ?? null)}
+                  >
+                    <Button icon={<UploadOutlined />}>Seleccionar foto</Button>
+                  </Upload>
+                </div>
+
+                {!modalEvento.desague?.verificado && (
+                  <div>
+                    <Text strong style={{ display: 'block', marginBottom: 4 }}>
+                      Registrar alcantarilla (opcional)
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+                      Si esta alcantarilla aún no está registrada, asígnale un código y un nombre.
+                    </Text>
+                    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                      <Input
+                        placeholder="Código / ID de la alcantarilla"
+                        value={codigoDesague}
+                        maxLength={30}
+                        onChange={(ev) => setCodigoDesague(ev.target.value)}
+                      />
+                      <Input
+                        placeholder="Nombre de la alcantarilla"
+                        value={nombreDesague}
+                        maxLength={100}
+                        onChange={(ev) => setNombreDesague(ev.target.value)}
+                      />
+                    </Space>
+                  </div>
+                )}
+              </>
+            )}
           </Space>
         )}
       </Modal>
